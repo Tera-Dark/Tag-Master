@@ -1,3 +1,4 @@
+
 {
   "name": "lora-tag-master",
   "private": true,
@@ -9,8 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.30.0",
+    "@google/genai": "^0.1.1",
     "file-saver": "^2.0.5",
+    "idb": "^8.0.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",

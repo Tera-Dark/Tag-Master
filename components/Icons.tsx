@@ -31,7 +31,20 @@ import {
   Eye,
   EyeOff,
   ListFilter,
-  LayoutGrid
+  LayoutGrid,
+  Search,
+  Sun,
+  Moon,
+  Tags,
+  BookOpen,
+  HelpCircle,
+  MousePointer2,
+  Keyboard,
+  List,
+  Grid3X3,
+  FolderInput,
+  Merge,
+  Plus
 } from 'lucide-react';
 
 export { 
@@ -64,6 +77,19 @@ export {
   ArrowRight, 
   Eye, 
   EyeOff, 
-  ListFilter,
-  LayoutGrid
+  ListFilter, 
+  LayoutGrid, 
+  Search, 
+  Sun, 
+  Moon, 
+  Tags,
+  BookOpen,
+  HelpCircle,
+  MousePointer2,
+  Keyboard,
+  List,
+  Grid3X3,
+  FolderInput,
+  Merge,
+  Plus
 };

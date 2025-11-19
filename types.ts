@@ -25,6 +25,9 @@ export interface PromptTemplate {
 }
 
 export interface AppSettings {
+  language: 'en' | 'zh';
+  theme: 'light' | 'dark'; // New theme setting
+  viewMode: 'grid' | 'list'; // New view mode setting
   protocol: AiProtocol;
   providerName: string;
   apiKey: string;

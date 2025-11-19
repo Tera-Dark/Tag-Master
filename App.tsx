@@ -1,8 +1,10 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { TagImage, AppSettings, DEFAULT_TEMPLATES, DEFAULT_PROMPT, PromptTemplate, Project } from './types';
 import { generateCaption } from './services/geminiService';
 import { exportAllProjectsToZip, exportProjectToZip, downloadSingleText } from './services/exportService';
+import { saveProjectsToDB, loadProjectsFromDB, clearDB } from './services/storageService';
+import { translations, Language } from './utils/i18n';
 import { 
   Upload, 
   Settings, 
@@ -12,101 +14,448 @@ import {
   CheckCircle, 
   AlertCircle, 
   Loader2, 
-  Play,
-  Pause,
-  Square,
-  X,
-  FileText,
-  Folder,
-  ChevronDown,
-  ChevronRight,
-  Archive,
-  RotateCcw,
-  Eraser,
-  CheckSquare,
-  ListFilter,
-  LayoutGrid,
-  Layers,
-  ArrowLeft,
-  ArrowRight,
-  RefreshCw
+  Play, 
+  Pause, 
+  Square, 
+  X, 
+  FileText, 
+  Folder, 
+  ChevronDown, 
+  ChevronRight, 
+  Archive, 
+  RotateCcw, 
+  Eraser, 
+  CheckSquare, 
+  ListFilter, 
+  LayoutGrid, 
+  ArrowLeft, 
+  ArrowRight, 
+  RefreshCw, 
+  Filter, 
+  Search, 
+  CheckCircle as SaveIcon, 
+  Layers, 
+  Sun, 
+  Moon, 
+  Tags,
+  ImageIcon,
+  BookOpen,
+  HelpCircle,
+  MousePointer2,
+  Keyboard,
+  List,
+  Grid3X3,
+  FolderInput,
+  Merge,
+  Plus
 } from './components/Icons';
 
-// Local Storage Key
-const STORAGE_KEY = 'lora-tag-master-settings-v3';
+// Local Storage Key for Settings
+const STORAGE_KEY = 'lora-tag-master-settings-v8';
+const TUTORIAL_SEEN_KEY = 'lora-tag-master-tutorial-seen-v1';
 
 type ViewFilter = 'all' | 'pending' | 'completed';
 
-// Helper for concurrent processing
-const promiseLimit = <T,>(items: T[], limit: number, fn: (item: T) => Promise<void>, checkStop: () => boolean) => {
-  let index = 0;
-  const active: Promise<void>[] = [];
-  
-  const next = (): Promise<void> => {
-    if (index >= items.length || checkStop()) return Promise.resolve();
-    
-    const item = items[index++];
-    const p = fn(item).then(() => {
-      active.splice(active.indexOf(p), 1);
-    });
-    active.push(p);
-    
-    // If we have space in the pool and more items, start another immediately
-    const chain = active.length >= limit ? Promise.race(active) : Promise.resolve();
-    return chain.then(() => next());
-  };
+// -- Helper Functions for File System Scanning --
 
-  // Start initial batch
-  const initialPromises: Promise<void>[] = [];
-  for (let i = 0; i < Math.min(limit, items.length); i++) {
-     initialPromises.push(next());
+const readAllDirectoryEntries = async (directoryReader: any): Promise<any[]> => {
+  const entries: any[] = [];
+  let readEntries = await new Promise<any[]>((resolve, reject) => {
+    directoryReader.readEntries(resolve, reject);
+  });
+
+  while (readEntries.length > 0) {
+    entries.push(...readEntries);
+    readEntries = await new Promise<any[]>((resolve, reject) => {
+      directoryReader.readEntries(resolve, reject);
+    });
   }
-  
-  return Promise.all(initialPromises); 
+  return entries;
+};
+
+const scanEntry = async (entry: any): Promise<File[]> => {
+  if (!entry) return [];
+  if (entry.isFile) {
+    return new Promise((resolve) => {
+      entry.file((file: File) => resolve([file]), () => resolve([]));
+    });
+  } else if (entry.isDirectory) {
+    const directoryReader = entry.createReader();
+    const entries = await readAllDirectoryEntries(directoryReader);
+    const files = await Promise.all(entries.map((e) => scanEntry(e)));
+    return files.reduce((acc, curr) => acc.concat(curr), [] as File[]);
+  }
+  return [];
+};
+
+const isImageFile = (file: File) => {
+    return file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|tiff|avif|heic)$/i.test(file.name);
+};
+
+// -- Sub-components --
+
+// Memoized Image Card for Grid View
+const ImageCard = React.memo(({ 
+    img, 
+    isSelected, 
+    isMultiSelected,
+    onPointerDown,
+    onPointerEnter,
+    onRemove 
+}: { 
+    img: TagImage, 
+    isSelected: boolean, 
+    isMultiSelected: boolean,
+    onPointerDown: (e: React.PointerEvent) => void,
+    onPointerEnter: (e: React.PointerEvent) => void,
+    onRemove: (e: React.MouseEvent) => void 
+}) => {
+    return (
+        <div 
+            id={`card-${img.id}`}
+            onPointerDown={onPointerDown}
+            onPointerEnter={onPointerEnter}
+            className={`relative group aspect-square rounded-xl border cursor-pointer overflow-hidden transition-all duration-200 select-none ${
+                isSelected 
+                ? 'border-indigo-500 ring-2 ring-indigo-500/50 shadow-lg shadow-indigo-500/20 z-10 scale-[1.02]' 
+                : isMultiSelected
+                    ? 'border-indigo-400/50 bg-indigo-50/10 ring-1 ring-indigo-400/30'
+                    : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900'
+            }`}
+        >
+            {/* Image */}
+            {img.previewUrl ? (
+                <img src={img.previewUrl} alt="thumb" loading="lazy" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 pointer-events-none" />
+            ) : (
+                <div className="w-full h-full flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 text-zinc-400">
+                    <ImageIcon className="w-8 h-8" />
+                </div>
+            )}
+            
+            {/* Selection Checkbox */}
+            <div 
+                className={`absolute top-2 left-2 z-30 p-1 rounded-md transition-all cursor-pointer pointer-events-none ${isMultiSelected ? 'bg-indigo-600 text-white opacity-100' : 'bg-black/20 text-white/50 opacity-0 group-hover:opacity-100 hover:bg-black/40'}`}
+            >
+                {isMultiSelected ? <CheckSquare className="w-4 h-4 fill-current" /> : <Square className="w-4 h-4" />}
+            </div>
+
+            {/* Status Indicator */}
+            <div className="absolute top-2 right-2 z-20 flex flex-col gap-1 pointer-events-none">
+                {img.status === 'success' && <div className="bg-emerald-500 text-white p-1 rounded-full shadow-lg animate-in zoom-in"><CheckCircle className="w-3.5 h-3.5" /></div>}
+                {img.status === 'loading' && <div className="bg-indigo-600 text-white p-1 rounded-full shadow-lg"><Loader2 className="w-3.5 h-3.5 animate-spin" /></div>}
+                {img.status === 'error' && <div className="bg-red-500 text-white p-1 rounded-full shadow-lg animate-pulse"><AlertCircle className="w-3.5 h-3.5" /></div>}
+            </div>
+
+            {/* Caption Overlay */}
+            {img.caption && (
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-white/90 via-white/90 dark:from-black dark:via-black/90 to-transparent p-3 pt-8 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                    <p className="text-[10px] text-zinc-700 dark:text-zinc-300 line-clamp-3 font-mono leading-tight">{img.caption}</p>
+                </div>
+            )}
+            
+            {/* Remove Button */}
+            <button 
+                onPointerDown={(e) => e.stopPropagation()} // Prevent selection trigger
+                onClick={onRemove}
+                className="absolute bottom-2 right-2 p-1.5 bg-white/80 dark:bg-black/60 hover:bg-red-500 dark:hover:bg-red-500 text-zinc-600 dark:text-white hover:text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all backdrop-blur-sm z-20 scale-90 group-hover:scale-100 shadow-sm"
+            >
+                <Trash2 className="w-3 h-3" />
+            </button>
+        </div>
+    );
+});
+
+// Memoized List Item for List View
+const ListItem = React.memo(({ 
+    img, 
+    isSelected, 
+    isMultiSelected,
+    onPointerDown,
+    onPointerEnter,
+    onRemove 
+}: { 
+    img: TagImage, 
+    isSelected: boolean, 
+    isMultiSelected: boolean,
+    onPointerDown: (e: React.PointerEvent) => void,
+    onPointerEnter: (e: React.PointerEvent) => void,
+    onRemove: (e: React.MouseEvent) => void 
+}) => {
+    return (
+        <div 
+            id={`card-${img.id}`}
+            onPointerDown={onPointerDown}
+            onPointerEnter={onPointerEnter}
+            className={`group flex items-center gap-4 p-3 rounded-lg border cursor-pointer select-none transition-all h-24 ${
+                isSelected 
+                ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 ring-1 ring-indigo-500/30 z-10' 
+                : isMultiSelected
+                    ? 'border-indigo-300 bg-indigo-50/30 dark:border-indigo-800 dark:bg-indigo-900/10'
+                    : 'border-transparent bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700'
+            }`}
+        >
+            {/* Checkbox */}
+            <div className="flex-shrink-0 pl-1 pointer-events-none">
+                {isMultiSelected ? <CheckSquare className="w-5 h-5 text-indigo-600" /> : <Square className="w-5 h-5 text-zinc-300 dark:text-zinc-600" />}
+            </div>
+
+            {/* Thumbnail */}
+            <div className="h-16 w-16 flex-shrink-0 bg-zinc-100 dark:bg-zinc-800 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700 pointer-events-none">
+                {img.previewUrl ? (
+                     <img src={img.previewUrl} className="w-full h-full object-cover" loading="lazy" />
+                ) : (
+                     <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-6 h-6 text-zinc-400" /></div>
+                )}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0 flex flex-col justify-center gap-1 pointer-events-none">
+                <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm truncate text-zinc-800 dark:text-zinc-200 max-w-[300px]">{img.file.name}</span>
+                    {/* Status Badge */}
+                    {img.status === 'success' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
+                    {img.status === 'loading' && <Loader2 className="w-4 h-4 text-indigo-500 animate-spin" />}
+                    {img.status === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                </div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed h-8 w-full">
+                    {img.caption || <span className="italic opacity-30">No caption...</span>}
+                </div>
+                {img.errorMsg && <span className="text-[10px] text-red-500 truncate">{img.errorMsg}</span>}
+            </div>
+
+            {/* Actions */}
+            <button 
+                onPointerDown={(e) => e.stopPropagation()} 
+                onClick={onRemove}
+                className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+            >
+                <Trash2 className="w-4 h-4" />
+            </button>
+        </div>
+    );
+});
+
+// Virtual List Component (For List View)
+const VirtualList = ({ 
+    items, 
+    selectedId, 
+    multiSelection, 
+    onCardPointerDown,
+    onCardPointerEnter,
+    onRemove
+}: {
+    items: { image: TagImage, projectId: string }[],
+    selectedId: string | null,
+    multiSelection: Set<string>,
+    onCardPointerDown: (id: string, e: React.PointerEvent) => void,
+    onCardPointerEnter: (id: string, e: React.PointerEvent) => void,
+    onRemove: (id: string, e: React.MouseEvent) => void
+}) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [scrollTop, setScrollTop] = useState(0);
+    const [containerHeight, setContainerHeight] = useState(800);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+
+        const onScroll = () => requestAnimationFrame(() => setScrollTop(el.scrollTop));
+        const onResize = () => setContainerHeight(el.clientHeight);
+
+        el.addEventListener('scroll', onScroll);
+        window.addEventListener('resize', onResize);
+        
+        setContainerHeight(el.clientHeight);
+
+        return () => {
+            el.removeEventListener('scroll', onScroll);
+            window.removeEventListener('resize', onResize);
+        };
+    }, []);
+
+    const rowHeight = 104; // 96px (h-24) + 8px gap
+    const totalHeight = items.length * rowHeight;
+
+    const buffer = 4;
+    const startRow = Math.max(0, Math.floor(scrollTop / rowHeight) - buffer);
+    const endRow = Math.min(items.length, Math.ceil((scrollTop + containerHeight) / rowHeight) + buffer);
+
+    const visibleItems = useMemo(() => {
+        return items.slice(startRow, endRow).map((item, index) => ({
+            ...item,
+            absoluteIndex: startRow + index
+        }));
+    }, [items, startRow, endRow]);
+
+    return (
+        <div ref={containerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar relative outline-none" tabIndex={-1}>
+            <div style={{ height: totalHeight, position: 'relative' }}>
+                <div 
+                    className="flex flex-col gap-2"
+                    style={{ 
+                        position: 'absolute', 
+                        top: startRow * rowHeight, 
+                        left: 0, 
+                        right: 0,
+                    }}
+                >
+                    {visibleItems.map(({ image }) => (
+                        <ListItem 
+                            key={image.id}
+                            img={image}
+                            isSelected={selectedId === image.id}
+                            isMultiSelected={multiSelection.has(image.id)}
+                            onPointerDown={(e) => onCardPointerDown(image.id, e)}
+                            onPointerEnter={(e) => onCardPointerEnter(image.id, e)}
+                            onRemove={(e) => onRemove(image.id, e)}
+                        />
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// Virtual Grid Component
+const VirtualGrid = ({ 
+    items, 
+    selectedId, 
+    multiSelection, 
+    onCardPointerDown,
+    onCardPointerEnter,
+    onRemove,
+    columnCount 
+}: {
+    items: { image: TagImage, projectId: string }[],
+    selectedId: string | null,
+    multiSelection: Set<string>,
+    onCardPointerDown: (id: string, e: React.PointerEvent) => void,
+    onCardPointerEnter: (id: string, e: React.PointerEvent) => void,
+    onRemove: (id: string, e: React.MouseEvent) => void,
+    columnCount: number
+}) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [scrollTop, setScrollTop] = useState(0);
+    const [containerHeight, setContainerHeight] = useState(800);
+    const [clientWidth, setClientWidth] = useState(1000);
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+
+        const onScroll = () => requestAnimationFrame(() => setScrollTop(el.scrollTop));
+        const onResize = () => {
+            setContainerHeight(el.clientHeight);
+            setClientWidth(el.clientWidth);
+        };
+
+        el.addEventListener('scroll', onScroll);
+        window.addEventListener('resize', onResize);
+        
+        // Initial measurement
+        setContainerHeight(el.clientHeight);
+        setClientWidth(el.clientWidth);
+
+        return () => {
+            el.removeEventListener('scroll', onScroll);
+            window.removeEventListener('resize', onResize);
+        };
+    }, []);
+
+    // Calculate accurate row height based on column count and spacing
+    const gap = 16;
+    const itemWidth = (clientWidth - (gap * (columnCount - 1))) / columnCount;
+    const rowHeight = itemWidth + gap; 
+
+    const totalRows = Math.ceil(items.length / columnCount);
+    const totalHeight = Math.max(0, totalRows * rowHeight);
+
+    // Buffer rows to render
+    const buffer = 4;
+    const startRow = Math.max(0, Math.floor(scrollTop / rowHeight) - buffer);
+    const endRow = Math.min(totalRows, Math.ceil((scrollTop + containerHeight) / rowHeight) + buffer);
+
+    const visibleItems = useMemo(() => {
+        const startIndex = startRow * columnCount;
+        const endIndex = endRow * columnCount;
+        return items.slice(startIndex, endIndex).map((item, index) => ({
+            ...item,
+            absoluteIndex: startIndex + index
+        }));
+    }, [items, startRow, endRow, columnCount]);
+
+    return (
+        <div ref={containerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar relative outline-none" tabIndex={-1}>
+            <div style={{ height: totalHeight, position: 'relative' }}>
+                <div 
+                    className="grid gap-4"
+                    style={{ 
+                        gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                        position: 'absolute', 
+                        top: startRow * rowHeight, 
+                        left: 0, 
+                        right: 0,
+                    }}
+                >
+                    {visibleItems.map(({ image }) => (
+                        <ImageCard 
+                            key={image.id}
+                            img={image}
+                            isSelected={selectedId === image.id}
+                            isMultiSelected={multiSelection.has(image.id)}
+                            onPointerDown={(e) => onCardPointerDown(image.id, e)}
+                            onPointerEnter={(e) => onCardPointerEnter(image.id, e)}
+                            onRemove={(e) => onRemove(image.id, e)}
+                        />
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const App: React.FC = () => {
   // -- State --
   const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false); 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeProjectId, setActiveProjectId] = useState<string | 'all'>('all'); // 'all' or project ID
+  const [multiSelection, setMultiSelection] = useState<Set<string>>(new Set());
+  const [activeProjectId, setActiveProjectId] = useState<string | 'all'>('all'); 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [isBatchOpen, setIsBatchOpen] = useState(false);
+  
+  // Move & Merge State
+  const [moveState, setMoveState] = useState<{
+     isOpen: boolean;
+     mode: 'selection' | 'project';
+     sourceProjectId?: string;
+  }>({ isOpen: false, mode: 'selection' });
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   
-  // Ref to control the batch loop
   const shouldStopRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const projectsRef = useRef(projects); // Ref to access latest projects in async callbacks
+  const projectsRef = useRef(projects); 
+  const saveTimeoutRef = useRef<number>();
+  const lastSelectedIdRef = useRef<string | null>(null); 
+  const dragCounter = useRef(0); 
+  
+  // Selection Drag State
+  const isSelectionDraggingRef = useRef(false);
+  const selectionModeRef = useRef<'select' | 'deselect'>('select');
 
-  // Sync ref
-  useEffect(() => {
-    projectsRef.current = projects;
-  }, [projects]);
-
-  // Load settings
+  // -- Load Settings --
   const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return {
-          protocol: parsed.protocol || parsed.provider || 'google',
-          providerName: parsed.providerName || 'Official Gemini',
-          apiKey: parsed.apiKey || '',
-          baseUrl: parsed.baseUrl || '',
-          model: parsed.model || 'gemini-2.5-flash',
-          activePrompt: parsed.activePrompt || parsed.promptTemplate || DEFAULT_PROMPT,
-          concurrency: parsed.concurrency || 3,
-          customTemplates: parsed.customTemplates || []
-        };
-      } catch (e) {
-        console.error("Failed to parse settings", e);
-      }
-    }
-    return {
+    const defaultSettings: AppSettings = {
+      language: 'en',
+      theme: 'dark',
+      viewMode: 'grid',
       protocol: 'google',
       providerName: 'Official Gemini',
       apiKey: '',
@@ -116,1254 +465,1176 @@ const App: React.FC = () => {
       concurrency: 3,
       customTemplates: []
     };
-  });
 
-  const [newTemplateName, setNewTemplateName] = useState('');
-  const [showTemplateSave, setShowTemplateSave] = useState(false);
-
-  // -- Helpers --
-  
-  const findImageById = (id: string | null): { image: TagImage, project: Project } | null => {
-    if (!id) return null;
-    for (const proj of projects) {
-      const found = proj.images.find(img => img.id === id);
-      if (found) return { image: found, project: proj };
-    }
-    return null;
-  };
-
-  const handleSwitchProject = (pid: string | 'all') => {
-    setActiveProjectId(pid);
-    // If the selected image is NOT in the new view, deselect it to avoid confusion
-    if (selectedId && pid !== 'all') {
-      const data = findImageById(selectedId);
-      if (data && data.project.id !== pid) {
-        setSelectedId(null);
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return { ...defaultSettings, ...parsed };
+      } catch (e) {
+        console.error("Failed to parse settings", e);
       }
     }
+    return defaultSettings;
+  });
+
+  // Helper for i18n
+  const t = (key: keyof typeof translations['en']) => {
+    return translations[settings.language][key] || translations['en'][key] || key;
   };
 
-  const getVisibleImages = useCallback(() => {
-    const visibleImgs: { image: TagImage, projectId: string }[] = [];
-    const targetProjects = activeProjectId === 'all' 
-      ? projects 
-      : projects.filter(p => p.id === activeProjectId);
+  // -- Effects --
 
-    targetProjects.forEach(p => {
+  // Sync ref
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  // Apply Theme
+  useEffect(() => {
+    if (settings.theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [settings.theme]);
+
+  // Check Tutorial Status
+  useEffect(() => {
+      const seen = localStorage.getItem(TUTORIAL_SEEN_KEY);
+      if (!seen) {
+          setIsTutorialOpen(true);
+      }
+  }, []);
+
+  // Initial DB Load
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const savedProjects = await loadProjectsFromDB();
+        if (savedProjects && savedProjects.length > 0) {
+          const restored = savedProjects.map(p => ({
+            ...p,
+            images: p.images.map(img => ({
+              ...img,
+              previewUrl: img.file ? URL.createObjectURL(img.file) : '',
+              status: img.status || 'idle'
+            }))
+          }));
+          setProjects(restored);
+        }
+      } catch (e) {
+        console.error("Failed to load DB", e);
+      } finally {
+        setIsLoaded(true);
+      }
+    };
+    loadData();
+  }, []);
+
+  // Global Pointer Up for Drag Selection
+  useEffect(() => {
+      const handleGlobalPointerUp = () => {
+          isSelectionDraggingRef.current = false;
+      };
+      window.addEventListener('pointerup', handleGlobalPointerUp);
+      return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
+  }, []);
+
+  // Auto-Save
+  useEffect(() => {
+    if (!isLoaded) return;
+    setSaveStatus('saving');
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = window.setTimeout(() => {
+      saveProjectsToDB(projects)
+        .then(() => setSaveStatus('saved'))
+        .catch(e => { console.error(e); setSaveStatus('unsaved'); });
+    }, 1000);
+    return () => clearTimeout(saveTimeoutRef.current);
+  }, [projects, isLoaded]);
+
+  // Save Settings
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  }, [settings]);
+
+  // -- Computed Data --
+  
+  const contextProjects = useMemo(() => activeProjectId === 'all' ? projects : projects.filter(p => p.id === activeProjectId), [projects, activeProjectId]);
+  
+  const visibleImages = useMemo(() => {
+    const result: { image: TagImage, projectId: string }[] = [];
+    contextProjects.forEach(p => {
         if (p.isCollapsed && activeProjectId === 'all') return; 
         p.images.forEach(img => {
             let isVisible = true;
             if (viewFilter === 'pending') isVisible = img.status === 'idle' || img.status === 'error' || img.status === 'loading';
             if (viewFilter === 'completed') isVisible = img.status === 'success';
             
+            if (isVisible && searchQuery.trim()) {
+               const q = searchQuery.toLowerCase();
+               const matchName = img.file.name.toLowerCase().includes(q);
+               const matchCaption = img.caption.toLowerCase().includes(q);
+               if (!matchName && !matchCaption) isVisible = false;
+            }
+
             if (isVisible) {
-                visibleImgs.push({ image: img, projectId: p.id });
+                result.push({ image: img, projectId: p.id });
             }
         });
     });
-    return visibleImgs;
-  }, [projects, viewFilter, activeProjectId]);
+    return result;
+  }, [contextProjects, viewFilter, searchQuery, activeProjectId]);
 
-  const selectedData = findImageById(selectedId);
-  const selectedImage = selectedData?.image;
-  const allTemplates = [...DEFAULT_TEMPLATES, ...settings.customTemplates];
-  
-  // Global Stats
-  const totalImages = projects.reduce((acc, p) => acc + p.images.length, 0);
-  const completedImages = projects.reduce((acc, p) => acc + p.images.filter(i => i.status === 'success').length, 0);
-  const progressPercentage = totalImages === 0 ? 0 : Math.round((completedImages / totalImages) * 100);
-
-  // Context Stats (Based on Active View)
-  const contextProjects = activeProjectId === 'all' ? projects : projects.filter(p => p.id === activeProjectId);
   const contextTotal = contextProjects.reduce((acc, p) => acc + p.images.length, 0);
   const contextCompleted = contextProjects.reduce((acc, p) => acc + p.images.filter(i => i.status === 'success').length, 0);
   const contextPending = contextTotal - contextCompleted;
-
-  // Save settings
+  
+  // Responsive Grid Columns calculation
+  const [gridColumns, setGridColumns] = useState(4);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  }, [settings]);
-
-  // Keyboard Navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (['TEXTAREA', 'INPUT'].includes((e.target as HTMLElement).tagName)) return;
-
-      if (e.key === 'Delete' && selectedId) {
-        handleRemoveImage(selectedId);
-      }
-      if (e.key === 'Escape') {
-        setSelectedId(null);
-        setIsSettingsOpen(false);
-      }
-      
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-          if (!selectedId) return;
-          e.preventDefault();
-          
-          const visible = getVisibleImages();
-          const currentIndex = visible.findIndex(v => v.image.id === selectedId);
-          if (currentIndex === -1) return;
-
-          let nextIndex = currentIndex;
-          if (e.key === 'ArrowRight') nextIndex = Math.min(visible.length - 1, currentIndex + 1);
-          if (e.key === 'ArrowLeft') nextIndex = Math.max(0, currentIndex - 1);
-
-          if (nextIndex !== currentIndex) {
-              const nextItem = visible[nextIndex];
-              setSelectedId(nextItem.image.id);
-              document.getElementById(`card-${nextItem.image.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          }
-      }
+    const handleResize = () => {
+        const w = window.innerWidth;
+        if (w >= 1536) setGridColumns(6);
+        else if (w >= 1280) setGridColumns(5);
+        else if (w >= 1024) setGridColumns(4);
+        else if (w >= 768) setGridColumns(3);
+        else setGridColumns(2);
     };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, projects, viewFilter, getVisibleImages]);
-
-  // -- File Handling --
-
-  const processFileEntry = async (entry: FileSystemEntry, path: string, fileMap: Map<string, File[]>) => {
-    if (entry.isFile) {
-      const fileEntry = entry as FileSystemFileEntry;
-      return new Promise<void>((resolve) => {
-        fileEntry.file((file) => {
-          if (file.type.startsWith('image/')) {
-            const dirName = path || 'General';
-            const currentList = fileMap.get(dirName) || [];
-            currentList.push(file);
-            fileMap.set(dirName, currentList);
-          }
-          resolve();
-        });
-      });
-    } else if (entry.isDirectory) {
-      const dirEntry = entry as FileSystemDirectoryEntry;
-      const dirReader = dirEntry.createReader();
-      const entries = await new Promise<FileSystemEntry[]>((resolve) => {
-        dirReader.readEntries((results) => resolve(results));
-      });
-      const subPath = path ? `${path}/${entry.name}` : entry.name; 
-      const promises = entries.map(e => processFileEntry(e, subPath, fileMap));
-      await Promise.all(promises);
-    }
-  };
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-
-    const items = e.dataTransfer.items;
-    const fileMap = new Map<string, File[]>();
-    const promises: Promise<void>[] = [];
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.kind === 'file') {
-        const entry = item.webkitGetAsEntry();
-        if (entry) {
-           // Logic: If specific project active, flat import. If dashboard, recursive structure.
-           // If file dropped on dashboard, put in 'General' or similar.
-           if (activeProjectId !== 'all') {
-             // force empty path to merge into active
-             promises.push(processFileEntry(entry, '', fileMap));
-           } else {
-             promises.push(processFileEntry(entry, '', fileMap));
-           }
-        }
-      }
-    }
-
-    await Promise.all(promises);
-
-    setProjects(prev => {
-       const next = [...prev];
-       
-       fileMap.forEach((files, dirName) => {
-          if (files.length === 0) return;
-          
-          // Check if we should merge into active project
-          if (activeProjectId !== 'all') {
-             const targetIndex = next.findIndex(p => p.id === activeProjectId);
-             if (targetIndex > -1) {
-                 const newImages = files.map(file => ({
-                    id: crypto.randomUUID(),
-                    file,
-                    previewUrl: URL.createObjectURL(file),
-                    caption: "",
-                    status: 'idle' as const
-                 }));
-                 next[targetIndex] = {
-                     ...next[targetIndex],
-                     images: [...next[targetIndex].images, ...newImages]
-                 };
-                 return; 
-             }
-          }
-
-          // Check if project with same name exists in 'all' view to merge folders dropped separately
-          const existingIndex = next.findIndex(p => p.name === dirName);
-          if (existingIndex > -1 && activeProjectId === 'all') {
-              const newImages = files.map(file => ({
-                  id: crypto.randomUUID(),
-                  file,
-                  previewUrl: URL.createObjectURL(file),
-                  caption: "",
-                  status: 'idle' as const
-               }));
-               next[existingIndex] = {
-                   ...next[existingIndex],
-                   images: [...next[existingIndex].images, ...newImages]
-               };
-               return;
-          }
-
-          // Standard create new project
-          const finalName = dirName || `Upload ${new Date().toLocaleTimeString()}`;
-          const newImages = files.map(file => ({
-            id: crypto.randomUUID(),
-            file,
-            previewUrl: URL.createObjectURL(file),
-            caption: "",
-            status: 'idle' as const
-          }));
-
-          next.push({
-            id: crypto.randomUUID(),
-            name: finalName,
-            images: newImages,
-            status: 'idle',
-            isCollapsed: false
-          });
-       });
-       return next;
-    });
-
-  }, [activeProjectId]);
-
-  const handleStandardUpload = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    
-    const newImages: TagImage[] = Array.from(files)
-      .filter(file => file.type.startsWith('image/'))
-      .map(file => ({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-        caption: "",
-        status: 'idle'
-      }));
-      
-    if (newImages.length === 0) return;
-
-    if (activeProjectId !== 'all') {
-        // Add to active project
-        setProjects(prev => prev.map(p => 
-            p.id === activeProjectId 
-            ? { ...p, images: [...p.images, ...newImages] }
-            : p
-        ));
-    } else {
-        // Create new project
-        const timestamp = new Date().toLocaleTimeString();
-        const newProject: Project = {
-            id: crypto.randomUUID(),
-            name: `Import ${timestamp}`,
-            images: newImages,
-            status: 'idle',
-            isCollapsed: false
-        };
-        setProjects(prev => [...prev, newProject]);
-    }
-    
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // -- Actions --
 
-  const handleRemoveImage = (id: string) => {
-    setProjects(prev => {
-        return prev.map(proj => ({
-            ...proj,
-            images: proj.images.filter(img => img.id !== id)
-        })).filter(proj => proj.images.length > 0);
-    });
-    if (selectedId === id) setSelectedId(null);
-  };
-
-  const handleRemoveProject = (projId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (confirm("Delete this entire project group?")) {
-        setProjects(prev => prev.filter(p => p.id !== projId));
-        if (activeProjectId === projId) setActiveProjectId('all');
-        if (selectedImage && selectedData?.project.id === projId) {
-            setSelectedId(null);
-        }
-    }
-  };
-
-  const handleClearAll = () => {
-      if (window.confirm('Are you sure you want to clear all projects and images?')) {
-          setProjects([]);
-          setSelectedId(null);
-          shouldStopRef.current = true;
-          setIsProcessing(false);
-          setIsPaused(false);
-          setActiveProjectId('all');
+  const handleSelectAll = () => {
+      if (multiSelection.size === visibleImages.length && visibleImages.length > 0) {
+          setMultiSelection(new Set()); // Deselect all
+      } else {
+          setMultiSelection(new Set(visibleImages.map(v => v.image.id))); // Select all visible
       }
   };
 
-  // Smart Batch Actions
-  const handleRetryFailed = () => {
-    setProjects(prev => prev.map(p => {
-        if (activeProjectId !== 'all' && p.id !== activeProjectId) return p;
-        return {
-            ...p,
-            images: p.images.map(img => 
-                img.status === 'error' ? { ...img, status: 'idle', errorMsg: undefined } : img
-            )
-        };
-    }));
-  };
+  // Optimized Selection Logic
+  const handleCardPointerDown = (id: string, e: React.PointerEvent) => {
+      // Only left click triggers selection
+      if (e.button !== 0) return;
 
-  const handleClearCompleted = () => {
-      if (!window.confirm("Remove all successfully completed images from the current view?")) return;
-      
-      setProjects(prev => prev.map(p => {
-          if (activeProjectId !== 'all' && p.id !== activeProjectId) return p;
+      // 1. Range Select (Shift + Click)
+      if (e.shiftKey && lastSelectedIdRef.current) {
+          e.preventDefault(); // Prevent text selection
+          const lastIdx = visibleImages.findIndex(v => v.image.id === lastSelectedIdRef.current);
+          const currIdx = visibleImages.findIndex(v => v.image.id === id);
           
-          return {
-            ...p,
-            images: p.images.filter(img => img.status !== 'success')
+          if (lastIdx !== -1 && currIdx !== -1) {
+              const start = Math.min(lastIdx, currIdx);
+              const end = Math.max(lastIdx, currIdx);
+              
+              const newSet = new Set(multiSelection);
+              // Simplified logic: Add range to existing.
+              for (let i = start; i <= end; i++) {
+                  newSet.add(visibleImages[i].image.id);
+              }
+              setMultiSelection(newSet);
+              return; 
           }
-      }).filter(p => p.images.length > 0));
+      }
+
+      // 2. Drag/Paint Select Start
+      isSelectionDraggingRef.current = true;
+      const isCurrentlySelected = multiSelection.has(id);
       
-      if (selectedImage && selectedImage.status === 'success') {
-          setSelectedId(null);
+      // If Ctrl/Cmd is held, we toggle. If not, and it's a fresh click, we select.
+      // Paint mode: If we start on a selected item -> deselect mode. If unselected -> select mode.
+      if (e.ctrlKey || e.metaKey) {
+          selectionModeRef.current = isCurrentlySelected ? 'deselect' : 'select';
+      } else {
+          // If clicking an unselected item without modifiers -> Clear others and select this one
+          if (!isCurrentlySelected) {
+              setMultiSelection(new Set([id]));
+              selectionModeRef.current = 'select';
+          } else {
+              selectionModeRef.current = 'select';
+          }
+      }
+
+      // Apply immediate effect to current card
+      setMultiSelection(prev => {
+          const next = new Set(e.ctrlKey || e.metaKey ? prev : []); // Clear if no ctrl
+          if (selectionModeRef.current === 'select') next.add(id);
+          else next.delete(id);
+          // Re-add current if it was cleared by no-ctrl but we are in select mode
+          if (!e.ctrlKey && !e.metaKey) next.add(id);
+          return next;
+      });
+
+      // Set active for inspector
+      setSelectedId(id);
+      lastSelectedIdRef.current = id;
+  };
+
+  const handleCardPointerEnter = (id: string, e: React.PointerEvent) => {
+      if (isSelectionDraggingRef.current) {
+          setMultiSelection(prev => {
+              const next = new Set(prev);
+              if (selectionModeRef.current === 'select') next.add(id);
+              else next.delete(id);
+              return next;
+          });
+          lastSelectedIdRef.current = id;
       }
   };
 
-  const handleResetVisible = () => {
-      if (!window.confirm("Reset captions and status for visible images?")) return;
+  const handleDeleteSelected = () => {
+      const count = multiSelection.size;
+      if (count === 0) return;
       
-      const visible = getVisibleImages();
-      const visibleIds = new Set(visible.map(v => v.image.id));
+      // We need to confirm with the user
+      const msg = t('deleteSelectedConfirm').replace('{count}', count.toString());
+      if (!confirm(msg)) return;
 
       setProjects(prev => prev.map(p => ({
           ...p,
-          images: p.images.map(img => 
-            visibleIds.has(img.id) ? { ...img, status: 'idle', caption: '', errorMsg: undefined } : img
-          )
-      })));
+          images: p.images.filter(img => !multiSelection.has(img.id))
+      })).filter(p => p.images.length > 0)); // Clean up empty projects if needed
+      
+      setMultiSelection(new Set());
+      setSelectedId(null);
   };
 
-  const toggleProjectCollapse = (projId: string) => {
-      setProjects(prev => prev.map(p => p.id === projId ? { ...p, isCollapsed: !p.isCollapsed } : p));
+  // Keyboard Shortcuts
+  useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+          // Ignore if typing in input/textarea
+          if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+          if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+              e.preventDefault();
+              handleSelectAll();
+          }
+          if (e.key === 'Escape') {
+              e.preventDefault();
+              setMultiSelection(new Set());
+              setSelectedId(null);
+          }
+          if (e.key === 'Delete' || e.key === 'Backspace') {
+              if (multiSelection.size > 0) {
+                  e.preventDefault();
+                  handleDeleteSelected();
+              }
+          }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [visibleImages, multiSelection]);
+
+  const handleBatchUpdate = (
+    operation: 'replace' | 'prepend' | 'append' | 'addTags' | 'removeTags', 
+    params: { find?: string, replace?: string, prefix?: string, suffix?: string, tags?: string[] },
+    scope: 'all' | 'selected'
+  ) => {
+    const targetIds = new Set(
+       scope === 'selected' 
+       ? Array.from(multiSelection) 
+       : visibleImages.map(v => v.image.id)
+    );
+
+    if (targetIds.size === 0) return;
+
+    setProjects(prev => prev.map(p => ({
+      ...p,
+      images: p.images.map(img => {
+        if (!targetIds.has(img.id)) return img;
+        
+        let newCaption = img.caption;
+
+        if (operation === 'replace' && params.find) {
+           const regex = new RegExp(params.find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+           newCaption = newCaption.replace(regex, params.replace || '');
+        } 
+        else if (operation === 'prepend' && params.prefix) {
+           newCaption = params.prefix + newCaption;
+        } 
+        else if (operation === 'append' && params.suffix) {
+           newCaption = newCaption + params.suffix;
+        }
+        else if (operation === 'addTags' && params.tags) {
+            // Smart Add
+            const currentTags = newCaption.split(',').map(t => t.trim()).filter(Boolean);
+            const tagsToAdd = params.tags.map(t => t.trim()).filter(Boolean);
+            // Case insensitive deduplication
+            const existingLower = new Set(currentTags.map(t => t.toLowerCase()));
+            const uniqueToAdd = tagsToAdd.filter(t => !existingLower.has(t.toLowerCase()));
+            
+            if (uniqueToAdd.length > 0) {
+                const merged = [...currentTags, ...uniqueToAdd];
+                newCaption = merged.join(', ');
+            }
+        }
+        else if (operation === 'removeTags' && params.tags) {
+            // Smart Remove
+            const currentTags = newCaption.split(',').map(t => t.trim()).filter(Boolean);
+            const tagsToRemove = new Set(params.tags.map(t => t.trim().toLowerCase()).filter(Boolean));
+            const filtered = currentTags.filter(t => !tagsToRemove.has(t.toLowerCase()));
+            newCaption = filtered.join(', ');
+        }
+
+        return { ...img, caption: newCaption };
+      })
+    })));
+    
+    setIsBatchOpen(false);
   };
 
-  // -- Generation Logic (Concurrent) --
+  const handleMoveAndMerge = (targetId: string, newName: string) => {
+     setProjects(prev => {
+         let next = [...prev];
+         let destId = targetId;
+         
+         // 1. Create new project if needed
+         if (destId === 'new') {
+             destId = crypto.randomUUID();
+             next.push({
+                 id: destId,
+                 name: newName || `Project ${new Date().toLocaleTimeString()}`,
+                 images: [],
+                 status: 'idle'
+             });
+         }
 
-  const updateImageStatus = useCallback((projId: string, imgId: string, status: TagImage['status'], result?: string, error?: string) => {
-    setProjects(prev => prev.map(proj => {
-        if (proj.id !== projId) return proj;
-        return {
-            ...proj,
-            images: proj.images.map(img => {
-                if (img.id !== imgId) return img;
-                return {
-                    ...img,
-                    status,
-                    caption: result !== undefined ? result : img.caption,
-                    errorMsg: error
-                };
-            })
-        };
-    }));
-  }, []);
+         let movingImages: TagImage[] = [];
+
+         // 2. Collect images based on mode
+         if (moveState.mode === 'selection') {
+             // Move selected images from ANY project to destination
+             next = next.map(p => {
+                  // If this is the destination, we don't remove from it (unless we implemented reordering, but here we just filter)
+                  if (p.id === destId) return p; 
+                  
+                  const staying = p.images.filter(img => !multiSelection.has(img.id));
+                  const moving = p.images.filter(img => multiSelection.has(img.id));
+                  movingImages.push(...moving);
+                  return { ...p, images: staying };
+             });
+         } else if (moveState.mode === 'project' && moveState.sourceProjectId) {
+             // Merge entire project
+             const sourceIdx = next.findIndex(p => p.id === moveState.sourceProjectId);
+             if (sourceIdx !== -1) {
+                 movingImages = [...next[sourceIdx].images];
+                 next.splice(sourceIdx, 1); // Delete source
+             }
+         }
+
+         // 3. Add to destination
+         const destIdx = next.findIndex(p => p.id === destId);
+         if (destIdx !== -1) {
+              next[destIdx] = {
+                  ...next[destIdx],
+                  images: [...next[destIdx].images, ...movingImages]
+              };
+         } else {
+             // Should have been created or existed, if not, put back? (Edge case)
+         }
+         
+         return next;
+     });
+
+     setMoveState({ isOpen: false, mode: 'selection' });
+     setMultiSelection(new Set());
+     setSelectedId(null);
+  };
+
+  // Chunked File Processing
+  const processFilesChunked = async (
+      files: File[], 
+      target: { mode: 'append', projectId: string } | { mode: 'create', name?: string }
+  ) => {
+      const CHUNK_SIZE = 50;
+      
+      // If creating new, generate ID and Name upfront
+      const newProjectId = crypto.randomUUID();
+      const timestamp = new Date().toLocaleTimeString();
+      const newProjectName = target.mode === 'create' ? (target.name || `Import ${timestamp}`) : '';
+
+      for (let i = 0; i < files.length; i += CHUNK_SIZE) {
+          const chunk = files.slice(i, i + CHUNK_SIZE);
+          const newImages = chunk.map(file => ({
+             id: crypto.randomUUID(),
+             file,
+             previewUrl: URL.createObjectURL(file),
+             caption: "",
+             status: 'idle' as const
+          }));
+
+          setProjects(prev => {
+             const next = [...prev];
+
+             if (target.mode === 'append') {
+                 // Append to existing
+                 const idx = next.findIndex(p => p.id === target.projectId);
+                 if (idx > -1) {
+                     next[idx] = { ...next[idx], images: [...next[idx].images, ...newImages] };
+                 }
+             } else {
+                 // Create New or Append to 'Just Created'
+                 // Check if we already created this project in previous chunk loop
+                 const existingNewIdx = next.findIndex(p => p.id === newProjectId);
+                 
+                 if (existingNewIdx > -1) {
+                      next[existingNewIdx] = { ...next[existingNewIdx], images: [...next[existingNewIdx].images, ...newImages] };
+                 } else {
+                     next.push({
+                         id: newProjectId,
+                         name: newProjectName,
+                         images: newImages,
+                         status: 'idle',
+                         isCollapsed: false
+                     });
+                 }
+             }
+             return next;
+          });
+          
+          await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+  };
+  
+  const handleStandardUpload = (fileList: FileList | null) => {
+      if (!fileList) return;
+      const files = Array.from(fileList).filter(isImageFile);
+      
+      if (activeProjectId === 'all') {
+          processFilesChunked(files, { mode: 'create' });
+      } else {
+          processFilesChunked(files, { mode: 'append', projectId: activeProjectId });
+      }
+      
+      if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRemoveImage = (id: string) => {
+    setProjects(prev => prev.map(p => ({ ...p, images: p.images.filter(i => i.id !== id) })).filter(p => p.images.length > 0));
+    if (selectedId === id) setSelectedId(null);
+    if (multiSelection.has(id)) {
+        const newSet = new Set(multiSelection);
+        newSet.delete(id);
+        setMultiSelection(newSet);
+    }
+  };
+
+  // -- Generation Logic --
 
   const handleTagSingle = async (projId: string, imgId: string) => {
-    // Access the MOST RECENT projects state via ref to get the file object
     const currentProject = projectsRef.current.find(p => p.id === projId);
     const img = currentProject?.images.find(i => i.id === imgId);
-    
     if (!currentProject || !img) return;
 
-    updateImageStatus(projId, imgId, 'loading');
+    // Optimistic update
+    setProjects(prev => prev.map(p => p.id === projId ? { ...p, images: p.images.map(i => i.id === imgId ? { ...i, status: 'loading' } : i) } : p));
 
     try {
       const caption = await generateCaption(img.file, settings);
-      updateImageStatus(projId, imgId, 'success', caption);
+      setProjects(prev => prev.map(p => p.id === projId ? { ...p, images: p.images.map(i => i.id === imgId ? { ...i, status: 'success', caption } : i) } : p));
     } catch (error: any) {
-      updateImageStatus(projId, imgId, 'error', undefined, error.message);
-      throw error; // Re-throw for promise handling
+      setProjects(prev => prev.map(p => p.id === projId ? { ...p, images: p.images.map(i => i.id === imgId ? { ...i, status: 'error', errorMsg: error.message } : i) } : p));
     }
   };
 
   const handleBatchTag = async () => {
-    if (!settings.apiKey) {
-      setIsSettingsOpen(true);
-      return;
-    }
+      if (!settings.apiKey) { setIsSettingsOpen(true); return; }
+      shouldStopRef.current = false;
+      setIsProcessing(true);
+      setIsPaused(false);
+      
+      // Build Queue
+      const queue: { projId: string, imgId: string }[] = [];
+      contextProjects.forEach(p => {
+          p.images.forEach(img => {
+              if (img.status === 'idle' || img.status === 'error') {
+                  queue.push({ projId: p.id, imgId: img.id });
+              }
+          });
+      });
 
-    shouldStopRef.current = false;
-    setIsProcessing(true);
-    setIsPaused(false);
+      if (queue.length === 0) { setIsProcessing(false); return; }
 
-    // 1. Flatten all tasks needed based on current view
-    const tasks: { projId: string; imgId: string }[] = [];
-    
-    const targetProjectIds = activeProjectId === 'all' 
-        ? projects.map(p => p.id) 
-        : [activeProjectId];
-    
-    targetProjectIds.forEach(pid => {
-        const proj = projects.find(p => p.id === pid);
-        if (proj) {
-            proj.images.forEach(img => {
-                if (img.status === 'idle' || img.status === 'error') {
-                    tasks.push({ projId: pid, imgId: img.id });
-                }
-            });
-        }
-    });
+      const concurrency = Math.max(1, Math.min(10, settings.concurrency || 3));
+      let active = 0;
+      let idx = 0;
 
-    if (tasks.length === 0) {
-        setIsProcessing(false);
-        return;
-    }
+      const processNext = async () => {
+          if (shouldStopRef.current || idx >= queue.length) return;
+          const task = queue[idx++];
+          active++;
+          try {
+             await handleTagSingle(task.projId, task.imgId);
+          } finally {
+             active--;
+             if (!shouldStopRef.current) processNext();
+          }
+      };
 
-    // 2. Run Concurrent Pool
-    try {
-        const concurrency = Math.max(1, Math.min(10, settings.concurrency || 3));
-        
-        // Define the task processor
-        const processTask = async (task: { projId: string, imgId: string }) => {
-            if (shouldStopRef.current) return;
-            try {
-                await handleTagSingle(task.projId, task.imgId);
-            } catch (e) {
-                // Error already updated in state, just continue
-            }
-        };
-
-        // Custom Promise Pool
-        const activePromises: Promise<void>[] = [];
-        let currentIndex = 0;
-
-        while (currentIndex < tasks.length && !shouldStopRef.current) {
-             // Fill pool
-             while (activePromises.length < concurrency && currentIndex < tasks.length && !shouldStopRef.current) {
-                 const task = tasks[currentIndex++];
-                 const p = processTask(task).then(() => {
-                     activePromises.splice(activePromises.indexOf(p), 1);
-                 });
-                 activePromises.push(p);
-             }
-
-             // Wait for at least one to finish before adding more
-             if (activePromises.length > 0) {
-                 await Promise.race(activePromises);
-             }
-        }
-
-        // Wait for remaining
-        await Promise.all(activePromises);
-
-    } catch (e) {
-        console.error("Batch process error", e);
-    } finally {
-        setIsProcessing(false);
-        setIsPaused(false);
-    }
+      const initialBatch = [];
+      for (let i = 0; i < concurrency; i++) initialBatch.push(processNext());
+      
+      // Poll for completion
+      const interval = setInterval(() => {
+          if (idx >= queue.length && active === 0) {
+              clearInterval(interval);
+              setIsProcessing(false);
+          }
+          if (shouldStopRef.current) {
+              clearInterval(interval);
+              setIsProcessing(interval);
+              setIsProcessing(false);
+          }
+      }, 500);
   };
 
-  const handleStop = () => {
-      shouldStopRef.current = true;
-      // State update will happen in the loop exit or finally block
-      setIsPaused(true); // Visual feedback immediately
-  };
-
-  // -- Export --
-
-  const handleExportAll = () => {
-      if (totalImages === 0) return;
-      exportAllProjectsToZip(projects);
-  };
-
-  const handleExportProject = (p: Project, e?: React.MouseEvent) => {
-      if (e) e.stopPropagation();
-      exportProjectToZip(p);
-  };
-
-  // -- Template Handlers --
-  const handleSaveTemplate = () => {
-    if (!newTemplateName.trim()) return;
-    const newTemplate: PromptTemplate = {
-        id: crypto.randomUUID(),
-        label: newTemplateName,
-        value: settings.activePrompt
-    };
-    setSettings(s => ({ ...s, customTemplates: [...s.customTemplates, newTemplate] }));
-    setNewTemplateName('');
-    setShowTemplateSave(false);
-  };
-
-  const handleDeleteTemplate = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSettings(s => ({ ...s, customTemplates: s.customTemplates.filter(t => t.id !== id) }));
-  };
-
-  // -- Drag Handlers (Global) --
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  // -- Drag & Drop Handlers --
+  
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragOver(true);
+    e.stopPropagation();
+    dragCounter.current += 1;
+    // Safely check types for file presence
+    if (e.dataTransfer.types && Array.prototype.indexOf.call(e.dataTransfer.types, "Files") !== -1) {
+      setIsDragOver(true);
+    }
   }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    setIsDragOver(false);
+    e.stopPropagation();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      setIsDragOver(false);
+      dragCounter.current = 0;
+    }
   }, []);
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    dragCounter.current = 0;
+
+    const items = e.dataTransfer.items;
+    let processedAsEntries = false;
+
+    if (items && items.length > 0) {
+       // Try to use WebkitGetAsEntry to detect folders
+       // @ts-ignore
+       const entries = Array.from(items).map(item => item.webkitGetAsEntry ? item.webkitGetAsEntry() : null).filter(Boolean);
+       
+       if (entries.length > 0) {
+           processedAsEntries = true;
+           const looseFiles: File[] = [];
+           for (const entry of entries) {
+               if (entry.isDirectory) {
+                   const files = await scanEntry(entry);
+                   const validFiles = files.filter(isImageFile);
+                   if (validFiles.length > 0) {
+                       await processFilesChunked(validFiles, { mode: 'create', name: entry.name });
+                   }
+               } else if (entry.isFile) {
+                   const files = await scanEntry(entry);
+                   looseFiles.push(...files);
+               }
+           }
+           if (looseFiles.length > 0) {
+               const validLoose = looseFiles.filter(isImageFile) as File[];
+               if (validLoose.length > 0) {
+                   if (activeProjectId === 'all') {
+                       await processFilesChunked(validLoose, { mode: 'create' });
+                   } else {
+                       await processFilesChunked(validLoose, { mode: 'append', projectId: activeProjectId });
+                   }
+               }
+           }
+           return;
+       }
+    }
+
+    // Fallback
+    if (!processedAsEntries && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const files = Array.from(e.dataTransfer.files).filter(isImageFile);
+        if (files.length > 0) {
+            if (activeProjectId === 'all') {
+                await processFilesChunked(files, { mode: 'create' });
+            } else {
+                await processFilesChunked(files, { mode: 'append', projectId: activeProjectId });
+            }
+        }
+    }
+  }, [activeProjectId]);
+
+  // -- Modals --
+
+  const MoveModal = () => {
+      if (!moveState.isOpen) return null;
+      const [targetId, setTargetId] = useState('new');
+      const [newName, setNewName] = useState('');
+
+      const isMerge = moveState.mode === 'project';
+      const count = isMerge 
+        ? projects.find(p => p.id === moveState.sourceProjectId)?.images.length || 0
+        : multiSelection.size;
+      
+      const sourceName = isMerge 
+        ? projects.find(p => p.id === moveState.sourceProjectId)?.name 
+        : '';
+
+      // Filter out source project from destination list if in merge mode
+      const availableProjects = projects.filter(p => !isMerge || p.id !== moveState.sourceProjectId);
+
+      return (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95">
+                  <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
+                      <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">{isMerge ? t('mergeTitle') : t('moveTitle')}</h2>
+                      <button onClick={() => setMoveState({isOpen: false, mode: 'selection'})}><X className="w-5 h-5 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300" /></button>
+                  </div>
+                  
+                  <div className="p-6 space-y-4">
+                      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                          {isMerge 
+                            ? t('mergeDesc').replace('{name}', sourceName || 'Project') 
+                            : t('moveDesc').replace('{count}', count.toString())}
+                      </p>
+
+                      <div>
+                          <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">{t('targetProject')}</label>
+                          <div className="relative">
+                              <select 
+                                value={targetId} 
+                                onChange={(e) => setTargetId(e.target.value)}
+                                className="w-full appearance-none bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 pr-10 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              >
+                                  <option value="new">{t('newProject')}</option>
+                                  {availableProjects.map(p => (
+                                      <option key={p.id} value={p.id}>{p.name} ({p.images.length})</option>
+                                  ))}
+                              </select>
+                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+                          </div>
+                      </div>
+
+                      {targetId === 'new' && (
+                          <div className="animate-in slide-in-from-top-2">
+                              <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">{t('newProjectName')}</label>
+                              <input 
+                                type="text" 
+                                value={newName} 
+                                onChange={e => setNewName(e.target.value)} 
+                                className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                placeholder="My New Project" 
+                                autoFocus
+                              />
+                          </div>
+                      )}
+                  </div>
+
+                  <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-end gap-2 bg-zinc-50 dark:bg-zinc-900 rounded-b-2xl">
+                      <button onClick={() => setMoveState({isOpen: false, mode: 'selection'})} className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300">{t('close')}</button>
+                      <button 
+                          onClick={() => handleMoveAndMerge(targetId, newName)}
+                          className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-lg shadow-lg"
+                      >
+                          {isMerge ? t('confirmMerge') : t('confirmMove')}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      );
+  };
+
+  const TutorialModal = () => {
+      const [step, setStep] = useState(0);
+      
+      const slides = [
+          {
+              icon: <BookOpen className="w-12 h-12 text-indigo-500" />,
+              title: t('tutWelcomeTitle'),
+              desc: t('tutWelcomeDesc')
+          },
+          {
+              icon: <Folder className="w-12 h-12 text-amber-500" />,
+              title: t('tutImportTitle'),
+              desc: t('tutImportDesc')
+          },
+          {
+              icon: <MousePointer2 className="w-12 h-12 text-emerald-500" />,
+              title: t('tutSelectTitle'),
+              desc: t('tutSelectDesc')
+          },
+          {
+              icon: <Wand2 className="w-12 h-12 text-purple-500" />,
+              title: t('tutTagTitle'),
+              desc: t('tutTagDesc')
+          },
+          {
+              icon: <Download className="w-12 h-12 text-blue-500" />,
+              title: t('tutExportTitle'),
+              desc: t('tutExportDesc')
+          }
+      ];
+
+      const handleNext = () => {
+          if (step < slides.length - 1) setStep(step + 1);
+          else handleClose();
+      };
+
+      const handlePrev = () => {
+          if (step > 0) setStep(step - 1);
+      };
+
+      const handleClose = () => {
+          localStorage.setItem(TUTORIAL_SEEN_KEY, 'true');
+          setIsTutorialOpen(false);
+      };
+
+      // Keyboard navigation
+      useEffect(() => {
+          const handleKey = (e: KeyboardEvent) => {
+             if (!isTutorialOpen) return;
+             if (e.key === 'ArrowRight') handleNext();
+             if (e.key === 'ArrowLeft') handlePrev();
+          };
+          window.addEventListener('keydown', handleKey);
+          return () => window.removeEventListener('keydown', handleKey);
+      }, [step, isTutorialOpen]);
+
+      if (!isTutorialOpen) return null;
+
+      return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-lg w-full shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col relative animate-in fade-in zoom-in-95 duration-300">
+                  <button onClick={handleClose} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"><X className="w-5 h-5" /></button>
+                  
+                  <div className="p-8 flex-1 flex flex-col items-center text-center justify-center min-h-[320px]">
+                      <div className="mb-6 p-6 bg-zinc-50 dark:bg-zinc-950 rounded-full shadow-inner">{slides[step].icon}</div>
+                      <h2 className="text-2xl font-bold mb-3 text-zinc-900 dark:text-white">{slides[step].title}</h2>
+                      <p className="text-zinc-500 dark:text-zinc-400 leading-relaxed">{slides[step].desc}</p>
+                  </div>
+
+                  <div className="p-6 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50/50 dark:bg-zinc-950/50">
+                      <button onClick={handleClose} className="text-sm font-medium text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">{t('skip')}</button>
+                      
+                      <div className="flex gap-2">
+                          {slides.map((_, i) => (
+                              <div key={i} className={`w-2 h-2 rounded-full transition-all duration-300 ${i === step ? 'bg-indigo-600 w-6' : 'bg-zinc-300 dark:bg-zinc-700'}`} />
+                          ))}
+                      </div>
+
+                      <button onClick={handleNext} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-full text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all transform active:scale-95">
+                          {step === slides.length - 1 ? t('finish') : t('next')}
+                          {step < slides.length - 1 && <ArrowRight className="w-4 h-4" />}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      );
+  };
 
   // -- Components --
-
-  const Sidebar = () => (
-    <div className="w-64 lg:w-72 flex-shrink-0 bg-zinc-950 border-r border-zinc-800 flex flex-col h-full z-20 select-none transition-all">
-      <div className="p-4 border-b border-zinc-800 bg-zinc-950">
-        <h1 className="text-lg font-bold text-white flex items-center gap-2 tracking-tight">
-          <Wand2 className="w-5 h-5 text-indigo-500" />
-          LoRA Tag Master
-        </h1>
-        <div className="flex items-center gap-1 mt-1.5">
-            <span className="text-[10px] text-zinc-500 bg-zinc-900 px-1.5 rounded border border-zinc-800 truncate max-w-[180px]">
-                {settings.providerName}
-            </span>
-            <span className="text-[10px] text-zinc-600">•</span>
-            <span className="text-[10px] text-zinc-500">{settings.model}</span>
-        </div>
-      </div>
-
-      <div className="p-3 flex flex-col h-full overflow-hidden relative">
-        {/* Main Actions */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="flex flex-col items-center justify-center gap-1.5 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 hover:text-white py-3 px-2 rounded-lg transition-all border border-zinc-800 hover:border-zinc-700 text-xs font-medium group relative overflow-hidden"
-          >
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Upload className="w-4 h-4 text-zinc-500 group-hover:text-indigo-500 transition-colors" />
-            Import
-          </button>
-          <button 
-            onClick={handleExportAll}
-            disabled={totalImages === 0}
-            className="flex flex-col items-center justify-center gap-1.5 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 hover:text-white py-3 px-2 rounded-lg transition-all border border-zinc-800 hover:border-zinc-700 disabled:opacity-50 text-xs font-medium group relative overflow-hidden"
-          >
-             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Archive className="w-4 h-4 text-zinc-500 group-hover:text-emerald-500 transition-colors" />
-            Export All
-          </button>
-        </div>
-        <input 
-          type="file" 
-          multiple 
-          accept="image/*" 
-          className="hidden" 
-          ref={fileInputRef} 
-          onChange={(e) => handleStandardUpload(e.target.files)} 
-        />
-
-        {/* Project Navigation */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-0.5 mb-4">
-            <div className="text-[10px] font-bold text-zinc-600 uppercase tracking-wider mb-2 px-2">Spaces</div>
-            
-            <button 
-                onClick={() => handleSwitchProject('all')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all border group ${
-                    activeProjectId === 'all' 
-                    ? 'bg-indigo-950/30 text-indigo-200 border-indigo-500/30 shadow-sm' 
-                    : 'bg-transparent text-zinc-400 hover:bg-zinc-900 border-transparent'
-                }`}
-            >
-                <div className="flex items-center gap-2.5">
-                    <LayoutGrid className={`w-4 h-4 ${activeProjectId === 'all' ? 'text-indigo-400' : 'text-zinc-500'}`} />
-                    Dashboard (All)
-                </div>
-                <span className="bg-zinc-950/50 px-1.5 rounded text-[10px] opacity-70 text-zinc-500">{totalImages}</span>
-            </button>
-
-            <div className="h-px bg-zinc-900/80 my-2 mx-2" />
-
-            {projects.length === 0 && (
-                <div className="text-center py-8 text-zinc-700 text-[10px] italic">No projects yet</div>
-            )}
-
-            {projects.map(p => {
-                const pDone = p.images.filter(i => i.status === 'success').length;
-                const pTotal = p.images.length;
-                const isComplete = pDone === pTotal && pTotal > 0;
-                const isActive = activeProjectId === p.id;
-                const isWorking = p.images.some(i => i.status === 'loading');
-
-                return (
-                    <div 
-                        key={p.id}
-                        className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all border cursor-pointer relative overflow-hidden ${
-                            isActive
-                            ? 'bg-zinc-800 text-white border-zinc-700 shadow-sm' 
-                            : 'bg-transparent text-zinc-400 hover:bg-zinc-900/50 border-transparent'
-                        }`}
-                        onClick={() => handleSwitchProject(p.id)}
-                    >
-                        {isWorking && (
-                            <div className="absolute bottom-0 left-0 h-[2px] bg-indigo-500/50 animate-pulse w-full" />
-                        )}
-                        <div className="flex items-center gap-2.5 truncate flex-1">
-                            {isComplete ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" /> : <Folder className={`w-3.5 h-3.5 ${isActive ? 'text-zinc-300' : 'text-zinc-600'} flex-shrink-0 transition-colors`} />}
-                            <span className="truncate">{p.name}</span>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-mono opacity-60 group-hover:opacity-100 transition-opacity ${isComplete ? 'text-emerald-500' : ''}`}>{pDone}/{pTotal}</span>
-                            {isActive && (
-                                <button 
-                                    onClick={(e) => handleRemoveProject(p.id, e)}
-                                    className="hover:text-red-400 transition-colors"
-                                >
-                                    <X className="w-3 h-3" />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                )
-            })}
-        </div>
-
-        {/* Process Controls */}
-        <div className="mt-auto space-y-3 border-t border-zinc-900 pt-4 bg-gradient-to-t from-zinc-950 via-zinc-950 to-transparent">
-            {!isProcessing && !isPaused ? (
-                <button 
-                    onClick={() => handleBatchTag()}
-                    disabled={contextTotal === 0 || contextPending === 0}
-                    className="group w-full flex items-center justify-center gap-2 bg-zinc-100 hover:bg-white text-black py-3 px-4 rounded-lg transition-all shadow-[0_0_15px_rgba(255,255,255,0.05)] disabled:opacity-40 disabled:cursor-not-allowed font-semibold text-sm relative overflow-hidden"
-                >
-                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
-                    <Play className="w-4 h-4 fill-current" />
-                    {contextPending === 0 && contextTotal > 0 ? 'Processing Complete' : `Start ${activeProjectId === 'all' ? 'All' : 'Project'}`}
-                </button>
-            ) : (
-                <div className="grid grid-cols-2 gap-2">
-                    {isProcessing ? (
-                        <button 
-                            onClick={() => shouldStopRef.current = true} 
-                            className="flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-black py-3 px-4 rounded-lg transition-all font-semibold text-sm"
-                        >
-                            <Pause className="w-4 h-4 fill-current" />
-                            Pause
-                        </button>
-                    ) : (
-                        <button 
-                            onClick={() => handleBatchTag()}
-                            className="flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-black py-3 px-4 rounded-lg transition-all font-semibold text-sm"
-                        >
-                            <Play className="w-4 h-4 fill-current" />
-                            Resume
-                        </button>
-                    )}
-                    
-                    <button 
-                        onClick={handleStop}
-                        className="flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 py-3 px-4 rounded-lg transition-all font-semibold text-sm"
-                    >
-                        <Square className="w-4 h-4 fill-current" />
-                        Stop
-                    </button>
-                </div>
-            )}
-
-            {/* Progress Bar */}
-             <div className="space-y-1.5">
-                <div className="flex justify-between items-end text-[10px] text-zinc-500 font-medium uppercase tracking-wider">
-                    <div className="flex items-center gap-1.5">
-                        {isProcessing && <Loader2 className="w-3 h-3 animate-spin text-indigo-500" />}
-                        <span>{isProcessing ? 'Processing...' : 'Progress'}</span>
-                    </div>
-                    <span>{progressPercentage}%</span>
-                </div>
-                <div className="h-2 w-full bg-zinc-900 rounded-full overflow-hidden border border-zinc-800/50">
-                    <div 
-                        className={`h-full transition-all duration-500 ease-out relative ${isProcessing ? 'bg-indigo-500' : 'bg-emerald-500'}`}
-                        style={{ width: `${progressPercentage}%` }}
-                    >
-                        {isProcessing && (
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_1s_infinite]" />
-                        )}
-                    </div>
-                </div>
-             </div>
-
-             {/* Settings Trigger */}
-            <button 
-                onClick={() => setIsSettingsOpen(true)}
-                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg transition-all text-xs font-medium border ${
-                !settings.apiKey ? 'bg-red-500/10 border-red-500/30 text-red-400 animate-pulse' : 'bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800'
-                }`}
-            >
-                <Settings className="w-3.5 h-3.5" />
-                {settings.apiKey ? 'Settings' : 'Configure API Key'}
-            </button>
-        </div>
-      </div>
-    </div>
-  );
 
   const SmartToolbar = () => {
       const errorCount = contextProjects.reduce((acc, p) => acc + p.images.filter(i => i.status === 'error').length, 0);
       const successCount = contextProjects.reduce((acc, p) => acc + p.images.filter(i => i.status === 'success').length, 0);
-
-      if (contextTotal === 0) return null;
+      const selectedCount = multiSelection.size;
 
       return (
-          <div className="sticky top-0 z-30 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 px-6 py-3 flex items-center justify-between shadow-sm transition-all">
-              {/* View Filter */}
-              <div className="flex items-center gap-1 bg-zinc-900/80 p-0.5 rounded-lg border border-zinc-800/50">
-                  <button 
-                    onClick={() => setViewFilter('all')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${viewFilter === 'all' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-                  >
-                      <Layers className="w-3 h-3" />
-                      All
-                  </button>
-                  <button 
-                    onClick={() => setViewFilter('pending')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${viewFilter === 'pending' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-                  >
-                      <ListFilter className="w-3 h-3" />
-                      Pending
-                      {contextPending > 0 && <span className="bg-black/20 px-1.5 py-0.5 rounded text-[9px] ml-1 font-mono">{contextPending}</span>}
-                  </button>
-                  <button 
-                    onClick={() => setViewFilter('completed')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${viewFilter === 'completed' ? 'bg-emerald-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-                  >
-                      <CheckSquare className="w-3 h-3" />
-                      Done
-                      {successCount > 0 && <span className="bg-black/20 px-1.5 py-0.5 rounded text-[9px] ml-1 font-mono">{successCount}</span>}
-                  </button>
+          <div className="sticky top-0 z-30 bg-zinc-50/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-6 py-3 flex items-center justify-between shadow-sm transition-all">
+              <div className="flex items-center gap-4">
+                {/* View Filters */}
+                <div className="flex items-center gap-1 bg-zinc-200/50 dark:bg-zinc-950 p-0.5 rounded-lg border border-zinc-300/50 dark:border-zinc-800/50">
+                    <button onClick={() => setViewFilter('all')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${viewFilter === 'all' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`}><Layers className="w-3 h-3" /></button>
+                    <button onClick={() => setViewFilter('pending')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${viewFilter === 'pending' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`}><ListFilter className="w-3 h-3" /> {contextPending > 0 && <span className="bg-black/10 dark:bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-mono">{contextPending}</span>}</button>
+                    <button onClick={() => setViewFilter('completed')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${viewFilter === 'completed' ? 'bg-emerald-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`}><CheckSquare className="w-3 h-3" /> {successCount > 0 && <span className="bg-black/10 dark:bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-mono">{successCount}</span>}</button>
+                </div>
+                
+                <div className="h-6 w-px bg-zinc-300 dark:bg-zinc-800"></div>
+
+                 {/* View Mode Toggle */}
+                 <div className="flex items-center gap-1 bg-zinc-200/50 dark:bg-zinc-950 p-0.5 rounded-lg border border-zinc-300/50 dark:border-zinc-800/50">
+                    <button onClick={() => setSettings(s => ({...s, viewMode: 'grid'}))} className={`p-1.5 rounded-md transition-all ${settings.viewMode === 'grid' ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`} title="Grid View"><Grid3X3 className="w-4 h-4" /></button>
+                    <button onClick={() => setSettings(s => ({...s, viewMode: 'list'}))} className={`p-1.5 rounded-md transition-all ${settings.viewMode === 'list' ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`} title="List View"><List className="w-4 h-4" /></button>
+                </div>
+                
+                <div className="h-6 w-px bg-zinc-300 dark:bg-zinc-800"></div>
+                
+                {/* Search */}
+                <div className="relative group">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input type="text" placeholder={t('searchPlaceholder')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-full pl-9 pr-8 py-1.5 text-xs w-32 focus:w-48 transition-all dark:text-zinc-200" />
+                    {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400"><X className="w-3 h-3" /></button>}
+                </div>
               </div>
 
-              {/* Context Info */}
               <div className="flex items-center gap-2">
-                  {errorCount > 0 && (
-                      <button 
-                        onClick={handleRetryFailed}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/20 rounded-md text-xs font-medium transition-colors animate-in fade-in"
-                      >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Retry ({errorCount})
-                      </button>
-                  )}
+                  {/* Selection Controls */}
+                  <button onClick={handleSelectAll} className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800 rounded-md text-xs font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800" title="Ctrl+A">
+                      {selectedCount === visibleImages.length && visibleImages.length > 0 ? <CheckSquare className="w-3.5 h-3.5 text-indigo-500" /> : <Square className="w-3.5 h-3.5" />}
+                      {selectedCount > 0 ? `${t('selected')} (${selectedCount})` : t('selectAll')}
+                  </button>
                   
-                  <button 
-                    onClick={handleResetVisible}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800 border border-zinc-800 rounded-md text-xs font-medium transition-colors"
-                  >
-                      <Eraser className="w-3.5 h-3.5" />
-                      Reset
+                  {selectedCount > 0 && (
+                    <>
+                      <button onClick={() => setMoveState({ isOpen: true, mode: 'selection' })} className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 rounded-md text-xs font-medium animate-in slide-in-from-right-2">
+                          <FolderInput className="w-3.5 h-3.5" />
+                          {t('move')}
+                      </button>
+                      <button onClick={handleDeleteSelected} className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-md text-xs font-medium animate-in slide-in-from-right-2" title="Delete Selected Images">
+                          <Trash2 className="w-3.5 h-3.5" />
+                          {t('deleteSelected')}
+                      </button>
+                    </>
+                  )}
+
+                  {/* Batch Actions */}
+                  <button onClick={() => setIsBatchOpen(true)} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-md text-xs font-medium">
+                      <Filter className="w-3.5 h-3.5" />
+                      {t('batchEdit')}
                   </button>
 
+                  {/* Utility Actions */}
+                  {errorCount > 0 && (
+                      <button onClick={() => setProjects(prev => prev.map(p => ({...p, images: p.images.map(i => i.status === 'error' ? {...i, status: 'idle', errorMsg: undefined} : i)})))} className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-600 border border-amber-500/20 rounded-md text-xs font-medium"><RotateCcw className="w-3.5 h-3.5" /> {t('retry')}</button>
+                  )}
+                  
                   {successCount > 0 && (
-                      <button 
-                        onClick={handleClearCompleted}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-zinc-400 hover:text-red-400 hover:bg-red-900/10 border border-zinc-800 hover:border-red-900/20 rounded-md text-xs font-medium transition-colors"
-                      >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          Clear Done
-                      </button>
+                      <button onClick={() => { if(confirm(t('clearDoneConfirm'))) setProjects(prev => prev.map(p => ({...p, images: p.images.filter(i => i.status !== 'success')}))); }} className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:text-red-500 border border-zinc-200 dark:border-zinc-800 rounded-md text-xs font-medium"><Eraser className="w-3.5 h-3.5" /> {t('clearDone')}</button>
                   )}
               </div>
           </div>
-      )
-  }
+      );
+  };
 
-  const ImageGrid = () => {
-    const projectsToRender = activeProjectId === 'all' 
-        ? projects 
-        : projects.filter(p => p.id === activeProjectId);
+  const BatchEditModal = () => {
+     if (!isBatchOpen) return null;
+     const [mode, setMode] = useState<'replace' | 'append' | 'smart'>('smart');
+     const [findStr, setFindStr] = useState('');
+     const [replaceStr, setReplaceStr] = useState('');
+     const [prefixStr, setPrefixStr] = useState('');
+     const [suffixStr, setSuffixStr] = useState('');
+     const [addTagsStr, setAddTagsStr] = useState('');
+     const [removeTagsStr, setRemoveTagsStr] = useState('');
+     const [scope, setScope] = useState<'all' | 'selected'>(multiSelection.size > 0 ? 'selected' : 'all');
 
-    return (
-        <div 
-            className="flex-1 bg-black relative overflow-hidden flex flex-col"
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-        >
+     const visibleCount = visibleImages.length;
+     const selectedCount = multiSelection.size;
+
+     return (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95">
+                <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
+                    <div><h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-100">{t('batchTitle')}</h2><p className="text-xs text-zinc-500">{t('batchSubtitle')}</p></div>
+                    <button onClick={() => setIsBatchOpen(false)}><X className="w-4 h-4 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300" /></button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                    <div className="flex bg-zinc-100 dark:bg-zinc-950 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                        <button onClick={() => setMode('smart')} className={`flex-1 py-2 rounded-md text-xs font-medium transition-all ${mode === 'smart' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500'}`}>{t('smartTags')}</button>
+                        <button onClick={() => setMode('replace')} className={`flex-1 py-2 rounded-md text-xs font-medium transition-all ${mode === 'replace' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500'}`}>{t('findReplace')}</button>
+                        <button onClick={() => setMode('append')} className={`flex-1 py-2 rounded-md text-xs font-medium transition-all ${mode === 'append' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500'}`}>{t('prependAppend')}</button>
+                    </div>
+
+                    <div className="space-y-4 min-h-[150px]">
+                         {mode === 'smart' && (
+                             <>
+                                <div>
+                                    <label className="text-xs font-medium text-emerald-600 dark:text-emerald-400 block mb-1.5 flex gap-2 items-center"><Tags className="w-3 h-3" /> {t('addTags')}</label>
+                                    <input value={addTagsStr} onChange={e => setAddTagsStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder={t('addTagsPlaceholder')} />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-medium text-red-600 dark:text-red-400 block mb-1.5 flex gap-2 items-center"><Eraser className="w-3 h-3" /> {t('removeTags')}</label>
+                                    <input value={removeTagsStr} onChange={e => setRemoveTagsStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder={t('removeTagsPlaceholder')} />
+                                </div>
+                             </>
+                         )}
+                         {mode === 'replace' && (
+                             <>
+                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('find')}</label><input value={findStr} onChange={e => setFindStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder="e.g. cat" /></div>
+                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('replaceWith')}</label><input value={replaceStr} onChange={e => setReplaceStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder="empty to remove" /></div>
+                             </>
+                         )}
+                         {mode === 'append' && (
+                             <>
+                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('prefix')}</label><input value={prefixStr} onChange={e => setPrefixStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder="masterpiece, " /></div>
+                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('suffix')}</label><input value={suffixStr} onChange={e => setSuffixStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder=", 4k" /></div>
+                             </>
+                         )}
+
+                         <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800/50">
+                             <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 block mb-2">{t('target')}</label>
+                             <div className="flex gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" checked={scope === 'all'} onChange={() => setScope('all')} className="accent-indigo-500" />
+                                    <span className="text-sm text-zinc-700 dark:text-zinc-300">{t('scopeAll')} ({visibleCount})</span>
+                                </label>
+                                <label className={`flex items-center gap-2 ${selectedCount === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                    <input type="radio" checked={scope === 'selected'} onChange={() => selectedCount > 0 && setScope('selected')} disabled={selectedCount === 0} className="accent-indigo-500" />
+                                    <span className="text-sm text-zinc-700 dark:text-zinc-300">{t('scopeSelected')} ({selectedCount})</span>
+                                </label>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+
+                <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-end gap-2 bg-zinc-50 dark:bg-zinc-900 rounded-b-2xl">
+                    <button onClick={() => setIsBatchOpen(false)} className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-900 rounded-lg">{t('close')}</button>
+                    <button 
+                        onClick={() => {
+                            if (mode === 'smart') {
+                                if (addTagsStr) handleBatchUpdate('addTags', { tags: addTagsStr.split(',') }, scope);
+                                if (removeTagsStr) handleBatchUpdate('removeTags', { tags: removeTagsStr.split(',') }, scope);
+                            }
+                            else if (mode === 'replace') handleBatchUpdate('replace', { find: findStr, replace: replaceStr }, scope);
+                            else handleBatchUpdate(mode === 'append' && prefixStr ? 'prepend' : 'append', { prefix: prefixStr, suffix: suffixStr }, scope);
+                        }}
+                        className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-lg shadow-lg"
+                    >
+                        {t('apply')}
+                    </button>
+                </div>
+            </div>
+        </div>
+     );
+  };
+
+  // Logic for Inspector Content
+  const activeImage = visibleImages.find(v => v.image.id === selectedId)?.image;
+  const inspectorProjectId = activeImage ? (activeProjectId === 'all' ? visibleImages.find(v => v.image.id === selectedId)?.projectId : activeProjectId) : null;
+  const inspectorProjectObj = inspectorProjectId ? projects.find(p => p.id === inspectorProjectId) : null;
+
+  return (
+    <div className="flex h-full w-full bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-200 font-sans overflow-hidden transition-colors duration-300">
+      {/* Sidebar */}
+      <div className="w-64 lg:w-72 flex-shrink-0 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col h-full z-20 select-none">
+        <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
+           <h1 className="text-lg font-bold flex items-center gap-2"><Wand2 className="w-5 h-5 text-indigo-600" />{t('appTitle')}</h1>
+           <button onClick={() => setIsTutorialOpen(true)} className="text-zinc-400 hover:text-indigo-500 transition-colors" title={t('tutorial')}><HelpCircle className="w-4 h-4" /></button>
+        </div>
+        <div className="px-4 py-1 flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800/50 pb-2">
+           <div className="flex items-center gap-1"><span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 px-1.5 rounded text-zinc-500">{settings.providerName}</span></div>
+           <div className="text-[10px] text-zinc-500 truncate max-w-[100px]">{settings.model}</div>
+        </div>
+
+        <div className="p-3 flex flex-col h-full overflow-hidden">
+             {/* Import/Export Buttons */}
+             <div className="grid grid-cols-2 gap-2 mb-4">
+                <button onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center justify-center gap-1.5 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 py-3 px-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs font-medium"><Upload className="w-4 h-4 text-zinc-400" />{t('import')}</button>
+                <button onClick={() => exportAllProjectsToZip(projects)} disabled={projects.length === 0} className="flex flex-col items-center justify-center gap-1.5 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 py-3 px-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs font-medium disabled:opacity-50"><Archive className="w-4 h-4 text-zinc-400" />{t('exportAll')}</button>
+             </div>
+             <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => handleStandardUpload(e.target.files)} />
+             
+             {/* Project List */}
+             <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-0.5 mb-4">
+                <button onClick={() => setActiveProjectId('all')} className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium border ${activeProjectId === 'all' ? 'bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/30' : 'border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}><div className="flex items-center gap-2"><LayoutGrid className="w-4 h-4" />{t('dashboard')}</div><span className="text-zinc-400">{projects.reduce((acc,p)=>acc+p.images.length,0)}</span></button>
+                <div className="h-px bg-zinc-200 dark:bg-zinc-800 my-2" />
+                {projects.map(p => (
+                    <div key={p.id} onClick={() => setActiveProjectId(p.id)} className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium border cursor-pointer ${activeProjectId === p.id ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-700' : 'border-transparent hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-zinc-500'}`}>
+                        <div className="flex items-center gap-2 truncate"><Folder className="w-3.5 h-3.5" /> <span className="truncate">{p.name}</span></div>
+                        <div className="flex items-center gap-1">
+                            <span className="opacity-50">{p.images.filter(i=>i.status==='success').length}/{p.images.length}</span>
+                            {/* Merge Button - Only visible on hover or active, and if > 1 project */}
+                            {projects.length > 1 && (
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); setMoveState({ isOpen: true, mode: 'project', sourceProjectId: p.id }); }} 
+                                    className="p-1 text-zinc-400 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title={t('merge')}
+                                >
+                                    <Merge className="w-3 h-3" />
+                                </button>
+                            )}
+                            {/* Delete Button */}
+                            {activeProjectId === p.id && <button onClick={(e)=>{e.stopPropagation(); if(confirm(t('deleteProjectConfirm'))) setProjects(pr=>pr.filter(x=>x.id!==p.id)); setActiveProjectId('all');}} className="hover:text-red-500 p-1"><X className="w-3 h-3"/></button>}
+                        </div>
+                    </div>
+                ))}
+             </div>
+
+             {/* Bottom Controls */}
+             <div className="mt-auto space-y-3 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                {!isProcessing ? (
+                    <button onClick={handleBatchTag} disabled={contextPending === 0} className="w-full flex items-center justify-center gap-2 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-black py-3 rounded-lg font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] transition-transform"><Play className="w-4 h-4 fill-current" />{t('startAll')}</button>
+                ) : (
+                    <div className="flex gap-2"><button onClick={() => shouldStopRef.current = true} className="flex-1 bg-amber-500 text-white py-3 rounded-lg font-bold text-sm flex justify-center items-center gap-2"><Pause className="w-4 h-4 fill-current" />{t('pause')}</button></div>
+                )}
+                
+                <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] uppercase font-bold text-zinc-400"><span>{t('progress')}</span><span>{contextTotal > 0 ? Math.round((contextCompleted/contextTotal)*100) : 0}%</span></div>
+                    <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-300" style={{width: `${contextTotal > 0 ? (contextCompleted/contextTotal)*100 : 0}%`}} /></div>
+                </div>
+
+                <div className="flex gap-2">
+                    <button onClick={() => setIsSettingsOpen(true)} className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-xs font-medium"><Settings className="w-3.5 h-3.5" />{t('settings')}</button>
+                    <div className="px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center">{saveStatus === 'saving' ? <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" /> : <SaveIcon className="w-3.5 h-3.5 text-emerald-500" />}</div>
+                </div>
+             </div>
+        </div>
+      </div>
+      
+      {/* Main Area */}
+      <div 
+        className="flex-1 flex flex-col min-w-0 relative"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <SmartToolbar />
+        
+        {visibleImages.length === 0 ? (
+           <div className="flex-1 flex flex-col items-center justify-center text-zinc-400">
+              <div className="w-24 h-24 bg-zinc-100 dark:bg-zinc-900 rounded-full flex items-center justify-center mb-4">
+                  <FolderInput className="w-10 h-10 opacity-50" />
+              </div>
+              <p className="text-lg font-medium">{t('workspaceEmpty')}</p>
+              <p className="text-sm opacity-50 mt-2 max-w-xs text-center">{t('dropHere')}</p>
+              <button onClick={() => fileInputRef.current?.click()} className="mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full text-sm font-bold shadow-lg shadow-indigo-500/20 transition-transform hover:scale-105 active:scale-95">
+                  {t('browseFiles')}
+              </button>
+           </div>
+        ) : (
+            settings.viewMode === 'list' ? (
+                <VirtualList 
+                    items={visibleImages}
+                    selectedId={selectedId}
+                    multiSelection={multiSelection}
+                    onCardPointerDown={handleCardPointerDown}
+                    onCardPointerEnter={handleCardPointerEnter}
+                    onRemove={handleRemoveImage}
+                />
+            ) : (
+                <VirtualGrid 
+                    items={visibleImages}
+                    selectedId={selectedId}
+                    multiSelection={multiSelection}
+                    onCardPointerDown={handleCardPointerDown}
+                    onCardPointerEnter={handleCardPointerEnter}
+                    onRemove={handleRemoveImage}
+                    columnCount={gridColumns}
+                />
+            )
+        )}
+
         {/* Drag Overlay */}
         {isDragOver && (
-            <div className="absolute inset-0 bg-indigo-500/20 backdrop-blur-sm z-50 flex items-center justify-center border-4 border-indigo-500 border-dashed m-4 rounded-2xl pointer-events-none">
-                <div className="text-indigo-200 font-bold text-xl flex flex-col items-center gap-4">
-                    <Folder className="w-16 h-16 animate-bounce" />
-                    Drop folders or images here
+            <div className="absolute inset-0 bg-indigo-500/10 backdrop-blur-sm z-50 flex items-center justify-center border-2 border-indigo-500 border-dashed m-4 rounded-2xl animate-in fade-in">
+                <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl shadow-2xl flex flex-col items-center animate-bounce">
+                    <Upload className="w-12 h-12 text-indigo-600 mb-4" />
+                    <h3 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">{t('import')}</h3>
                 </div>
             </div>
         )}
-
-        <SmartToolbar />
-
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar pb-40 scroll-smooth">
-            {projectsToRender.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-zinc-600 gap-6 select-none animate-in fade-in duration-700">
-                <div className="w-32 h-32 rounded-3xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shadow-2xl">
-                    <Layers className="w-12 h-12 opacity-20" />
-                </div>
-                <div className="text-center space-y-2">
-                    <p className="text-xl font-medium text-zinc-300">Workspace Empty</p>
-                    <p className="text-sm text-zinc-500 max-w-sm mx-auto leading-relaxed">
-                        Drag & drop folders to create projects automatically.<br/>
-                        Optimized for large dataset workflows.
-                    </p>
-                    <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="mt-6 inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm font-medium hover:bg-indigo-500/10 px-4 py-2 rounded-full transition-all"
-                    >
-                        <Upload className="w-4 h-4" />
-                        Browse Files
-                    </button>
-                </div>
-                </div>
-            ) : (
-                <div className="flex flex-col gap-8">
-                    {projectsToRender.map(project => {
-                        // Apply filtering
-                        const visibleImages = project.images.filter(img => {
-                            if (viewFilter === 'all') return true;
-                            if (viewFilter === 'pending') return img.status === 'idle' || img.status === 'error' || img.status === 'loading';
-                            if (viewFilter === 'completed') return img.status === 'success';
-                            return true;
-                        });
-
-                        if (visibleImages.length === 0 && viewFilter !== 'all') return null;
-
-                        return (
-                        <div key={project.id} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            {/* Project Header */}
-                            <div className="flex items-center justify-between mb-4 bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/50 hover:border-zinc-700/50 transition-all group sticky top-0">
-                                <div 
-                                    className="flex items-center gap-3 cursor-pointer flex-1 select-none"
-                                    onClick={() => activeProjectId === 'all' ? toggleProjectCollapse(project.id) : null}
-                                >
-                                    {activeProjectId === 'all' && (
-                                        <button className="text-zinc-500 hover:text-white transition-colors">
-                                            {project.isCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                                        </button>
-                                    )}
-                                    <div className="flex items-center gap-3">
-                                        <div className={`p-1.5 rounded-md ${activeProjectId === project.id ? 'bg-indigo-500/10 text-indigo-400' : 'bg-zinc-800/50 text-zinc-500'}`}>
-                                             <Folder className="w-4 h-4" />
-                                        </div>
-                                        <h2 className="font-bold text-zinc-200 text-sm tracking-tight">{project.name}</h2>
-                                        <span className="text-[10px] text-zinc-500 font-mono bg-zinc-900 px-2 py-0.5 rounded-md border border-zinc-800">
-                                            {visibleImages.length} items
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                <div className="flex items-center gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button 
-                                        onClick={(e) => handleExportProject(project, e)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 hover:bg-emerald-500/10 text-zinc-400 hover:text-emerald-400 rounded-lg border border-zinc-800 hover:border-emerald-500/30 transition-all text-xs font-medium"
-                                        title="Download this project only"
-                                    >
-                                        <Download className="w-3.5 h-3.5" />
-                                        Export
-                                    </button>
-                                    <button 
-                                        onClick={(e) => handleRemoveProject(project.id, e)}
-                                        className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
-                                        title="Delete project"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Grid */}
-                            {(!project.isCollapsed || activeProjectId !== 'all') && (
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-                                    {visibleImages.map(img => (
-                                        <div 
-                                        id={`card-${img.id}`}
-                                        key={img.id}
-                                        onClick={() => setSelectedId(img.id)}
-                                        className={`relative group aspect-square rounded-xl border cursor-pointer overflow-hidden transition-all duration-200 ${
-                                            selectedId === img.id 
-                                            ? 'border-indigo-500 ring-2 ring-indigo-500/50 shadow-[0_10px_30px_-10px_rgba(99,102,241,0.5)] z-10 scale-[1.02]' 
-                                            : 'border-zinc-800 hover:border-zinc-600 bg-zinc-900'
-                                        }`}
-                                        >
-                                        <img src={img.previewUrl} alt="thumb" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                                        
-                                        {/* Status Indicator */}
-                                        <div className="absolute top-2 left-2 z-20 flex flex-col gap-1">
-                                            {img.status === 'success' && <div className="bg-emerald-500 text-white p-1 rounded-full shadow-lg animate-in zoom-in"><CheckCircle className="w-3.5 h-3.5" /></div>}
-                                            {img.status === 'loading' && <div className="bg-indigo-600 text-white p-1 rounded-full shadow-lg"><Loader2 className="w-3.5 h-3.5 animate-spin" /></div>}
-                                            {img.status === 'error' && <div className="bg-red-500 text-white p-1 rounded-full shadow-lg animate-pulse"><AlertCircle className="w-3.5 h-3.5" /></div>}
-                                        </div>
-
-                                        {/* Text Overlay */}
-                                        {img.caption && (
-                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/90 to-transparent p-3 pt-8 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                            <p className="text-[10px] text-zinc-300 line-clamp-3 font-mono leading-tight">{img.caption}</p>
-                                            </div>
-                                        )}
-                                        
-                                        {/* Quick Delete */}
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); handleRemoveImage(img.id); }}
-                                            className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all backdrop-blur-sm z-20 scale-90 group-hover:scale-100"
-                                        >
-                                            <Trash2 className="w-3 h-3" />
-                                        </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )})}
-                </div>
-            )}
-        </div>
-        </div>
-    );
-  };
-
-  const EditorPanel = () => {
-    if (!selectedId || !selectedImage || !selectedData) return null;
-
-    return (
-      <div className="w-96 flex-shrink-0 bg-zinc-950 border-l border-zinc-800 flex flex-col h-full shadow-2xl z-20 animate-in slide-in-from-right-10 duration-300">
-        <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
-          <div className="flex flex-col overflow-hidden">
-            <h3 className="font-bold text-zinc-200 text-sm">Inspector</h3>
-            <span className="text-[10px] text-zinc-500 truncate max-w-[200px] flex items-center gap-1.5">
-                <Folder className="w-3 h-3" />
-                {selectedData.project.name}
-            </span>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button 
-               onClick={() => downloadSingleText(selectedImage)}
-               disabled={!selectedImage.caption}
-               title="Download .txt"
-               className="p-2 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors disabled:opacity-30"
-            >
-               <FileText className="w-4 h-4" />
-            </button>
-            <button 
-               onClick={() => handleTagSingle(selectedData.project.id, selectedImage.id)}
-               disabled={selectedImage.status === 'loading'}
-               className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 font-medium flex items-center gap-1.5 shadow-sm"
-            >
-               <RefreshCw className={`w-3.5 h-3.5 ${selectedImage.status === 'loading' ? 'animate-spin' : ''}`} />
-               {selectedImage.status === 'loading' ? 'Wait' : 'Regen'}
-            </button>
-          </div>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5 custom-scrollbar">
-          <div className="aspect-video bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden flex items-center justify-center relative pattern-grid group">
-            <img 
-              src={selectedImage.previewUrl} 
-              alt="preview" 
-              className="max-w-full max-h-full object-contain shadow-lg" 
-            />
-             <a href={selectedImage.previewUrl} target="_blank" rel="noreferrer" className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-white opacity-0 group-hover:opacity-100 transition-opacity text-[10px] font-medium border border-white/10 hover:bg-black/80">
-                 Open Full Size
-             </a>
-          </div>
-
-          <div className="flex flex-col gap-3 flex-1 h-full">
-            <div className="flex justify-between items-end">
-              <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Caption Content</label>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${selectedImage.caption.length > 0 ? 'text-indigo-300 bg-indigo-500/10 border-indigo-500/20' : 'text-zinc-600 bg-zinc-900 border-zinc-800'}`}>
-                {selectedImage.caption.length} chars
-              </span>
-            </div>
-            
-            <div className="relative flex-1 flex flex-col">
-                <textarea 
-                value={selectedImage.caption}
-                onChange={(e) => updateImageStatus(selectedData.project.id, selectedImage.id, selectedImage.status, e.target.value)}
-                placeholder={selectedImage.status === 'loading' ? "AI is analyzing image details..." : "Waiting for generation..."}
-                className={`flex-1 w-full bg-zinc-900/50 border rounded-xl p-4 text-sm text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none leading-relaxed font-mono custom-scrollbar placeholder:text-zinc-700 transition-all ${selectedImage.status === 'loading' ? 'border-indigo-500/50 animate-pulse' : 'border-zinc-800 focus:border-indigo-500'}`}
-                disabled={selectedImage.status === 'loading'}
-                />
-            </div>
-
-            {selectedImage.status === 'error' && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 flex gap-3 items-start animate-in slide-in-from-bottom-2">
-                <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                <div>
-                    <p className="font-bold mb-0.5">Generation Failed</p>
-                    <p className="opacity-80 leading-tight">{selectedImage.errorMsg}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Navigation Hints */}
-            <div className="flex items-center justify-center gap-4 text-[10px] text-zinc-600 pt-2 border-t border-zinc-800/50">
-                <span className="flex items-center gap-1"><kbd className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">←</kbd> Prev</span>
-                <span className="flex items-center gap-1"><kbd className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">→</kbd> Next</span>
-                <span className="flex items-center gap-1"><kbd className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">Del</kbd> Remove</span>
-            </div>
-          </div>
-        </div>
       </div>
-    );
-  };
 
-  const SettingsModal = () => {
-    if (!isSettingsOpen) return null;
-    
-    return (
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-          <div className="p-5 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
-            <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shadow-inner">
-                    <Settings className="w-5 h-5 text-zinc-400" />
-                </div>
-                <div>
-                    <h2 className="text-base font-bold text-white">Settings</h2>
-                    <p className="text-xs text-zinc-500">Performance & API Configuration</p>
-                </div>
-            </div>
-            <button onClick={() => setIsSettingsOpen(false)} className="text-zinc-400 hover:text-white p-2 rounded-lg hover:bg-zinc-800 transition-colors">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-            
-            {/* Service Provider Section */}
-            <section className="space-y-4">
-              <div className="flex items-center justify-between">
-                 <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                    <Wand2 className="w-3 h-3" />
-                    AI Provider
-                 </h3>
-                 <div className="flex bg-zinc-900 p-1 rounded-lg border border-zinc-800">
-                    <button 
-                        onClick={() => setSettings(s => ({ ...s, protocol: 'google', providerName: 'Official Gemini', baseUrl: '', model: 'gemini-2.5-flash' }))}
-                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${settings.protocol === 'google' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-                    >
-                        Google GenAI
-                    </button>
-                    <button 
-                        onClick={() => setSettings(s => ({ ...s, protocol: 'openai_compatible', providerName: 'Custom OpenAI', baseUrl: 'https://api.openai.com', model: 'gpt-4o' }))}
-                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${settings.protocol === 'openai_compatible' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
-                    >
-                        OpenAI Compatible
-                    </button>
+      {/* Inspector Panel */}
+      <div className={`w-80 border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col transition-all duration-300 flex-shrink-0 ${selectedId ? 'translate-x-0' : 'translate-x-full hidden lg:flex lg:translate-x-0'}`}>
+          {activeImage ? (
+              <>
+                 <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 font-bold flex justify-between items-center">
+                    <span className="truncate max-w-[200px] text-zinc-800 dark:text-zinc-200">{activeImage.file.name}</span>
+                    <div className="flex gap-1">
+                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-zinc-200 dark:border-zinc-700">{inspectorProjectObj?.name || 'Unknown'}</span>
+                    </div>
                  </div>
-              </div>
-
-              <div className="grid gap-4 p-5 bg-zinc-900/30 border border-zinc-800 rounded-xl">
-                
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-medium text-zinc-400 mb-1.5">Provider Name</label>
-                        <input 
-                            type="text"
-                            value={settings.providerName}
-                            onChange={(e) => setSettings(s => ({ ...s, providerName: e.target.value }))}
-                            placeholder="e.g. Cherry, DeepSeek..."
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none placeholder:text-zinc-700"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium text-zinc-400 mb-1.5">Model Name</label>
-                        {settings.protocol === 'google' ? (
-                            <input 
-                            type="text"
-                            list="google-models"
-                            value={settings.model}
-                            onChange={(e) => setSettings(s => ({ ...s, model: e.target.value }))}
-                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-200 focus:border-indigo-500 focus:outline-none"
-                            />
-                        ) : (
-                            <input 
-                                type="text"
-                                value={settings.model}
-                                onChange={(e) => setSettings(s => ({ ...s, model: e.target.value }))}
-                                placeholder="e.g. gpt-4o, claude-3-opus"
-                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none placeholder:text-zinc-700"
-                            />
-                        )}
-                        {settings.protocol === 'google' && (
-                            <datalist id="google-models">
-                                <option value="gemini-2.5-flash" />
-                                <option value="gemini-2.5-flash-lite-latest" />
-                                <option value="gemini-3-pro-preview" />
-                            </datalist>
-                        )}
-                    </div>
-                </div>
-
-                {settings.protocol === 'openai_compatible' && (
-                    <div>
-                    <label className="block text-xs font-medium text-zinc-400 mb-1.5">Base URL</label>
-                    <input 
-                        type="text"
-                        value={settings.baseUrl}
-                        onChange={(e) => setSettings(s => ({ ...s, baseUrl: e.target.value }))}
-                        placeholder="https://api.provider.com"
-                        className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none placeholder:text-zinc-700 font-mono"
-                    />
-                    <p className="text-[10px] text-zinc-600 mt-1">
-                       Enter the root domain (e.g. <code>https://api.example.com</code>). The system will automatically append <code>/v1/chat/completions</code>.
-                    </p>
-                    </div>
-                )}
-
-                <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-                    API Key
-                  </label>
-                  <input 
-                    type="password"
-                    value={settings.apiKey}
-                    onChange={(e) => setSettings(s => ({ ...s, apiKey: e.target.value }))}
-                    placeholder="sk-..."
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none placeholder:text-zinc-700 font-mono"
-                  />
-                </div>
-              </div>
-            </section>
-
-            {/* Performance Section */}
-            <section className="space-y-4">
-                <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                    <Loader2 className="w-3 h-3" />
-                    Performance
-                </h3>
-                <div className="p-5 bg-zinc-900/30 border border-zinc-800 rounded-xl flex items-center justify-between gap-6">
-                     <div className="flex-1">
-                         <label className="block text-sm font-medium text-zinc-200 mb-1">Concurrency Limit</label>
-                         <p className="text-xs text-zinc-500">
-                             Number of images to process simultaneously. Higher is faster but may hit API rate limits.
-                         </p>
+                 <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+                     <div className="aspect-square rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-sm relative group">
+                         <img src={activeImage.previewUrl} className="w-full h-full object-contain" />
                      </div>
-                     <div className="flex items-center gap-3 bg-zinc-950 p-2 rounded-lg border border-zinc-800">
-                         <input 
-                            type="range" 
-                            min="1" 
-                            max="10" 
-                            value={settings.concurrency || 3}
-                            onChange={(e) => setSettings(s => ({ ...s, concurrency: parseInt(e.target.value) }))}
-                            className="accent-indigo-500 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer w-32"
+                     
+                     <div className="space-y-2">
+                         <div className="flex justify-between items-center">
+                             <label className="text-xs font-bold text-zinc-500 uppercase">{t('captionContent')}</label>
+                             <button 
+                                onClick={() => inspectorProjectId && handleTagSingle(inspectorProjectId, activeImage.id)} 
+                                disabled={activeImage.status === 'loading'}
+                                className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-500 disabled:opacity-50"
+                             >
+                                {activeImage.status === 'loading' ? <Loader2 className="w-3 h-3 animate-spin"/> : <Wand2 className="w-3 h-3" />}
+                                {t('regen')}
+                             </button>
+                         </div>
+                         <textarea 
+                            className="w-full h-48 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-zinc-800 dark:text-zinc-200"
+                            value={activeImage.caption}
+                            onChange={(e) => {
+                                const newText = e.target.value;
+                                if (inspectorProjectId) {
+                                    setProjects(prev => prev.map(p => p.id === inspectorProjectId ? {
+                                        ...p,
+                                        images: p.images.map(i => i.id === activeImage.id ? { ...i, caption: newText } : i)
+                                    } : p));
+                                }
+                            }}
+                            placeholder="Caption..."
                          />
-                         <span className="text-sm font-mono font-bold text-indigo-400 w-6 text-center">{settings.concurrency || 3}</span>
+                         <div className="flex justify-between">
+                            <button onClick={() => downloadSingleText(activeImage)} className="text-xs flex items-center gap-1 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"><Download className="w-3 h-3"/> Save .txt</button>
+                            <span className="text-[10px] text-zinc-400">{activeImage.caption.length} chars</span>
+                         </div>
                      </div>
-                </div>
-            </section>
-
-            {/* Prompt Section */}
-            <section className="space-y-4">
-              <div className="flex items-center justify-between">
-                 <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
-                    <FileText className="w-3 h-3" />
-                    Prompt Preset
-                 </h3>
-                 <button 
-                    onClick={() => setShowTemplateSave(true)}
-                    className="text-[10px] bg-zinc-800 hover:bg-zinc-700 px-2 py-1 rounded text-zinc-300 transition-colors"
-                 >
-                    Save current as...
-                 </button>
+                 </div>
+              </>
+          ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 p-8 text-center">
+                  <MousePointer2 className="w-12 h-12 mb-4 opacity-20" />
+                  <p className="text-sm font-medium">Select an image to edit details</p>
               </div>
-
-              {showTemplateSave && (
-                  <div className="flex gap-2 items-center mb-2 animate-in fade-in slide-in-from-top-2">
-                      <input 
-                        type="text" 
-                        placeholder="New template name..."
-                        value={newTemplateName}
-                        onChange={(e) => setNewTemplateName(e.target.value)}
-                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-white focus:outline-none"
-                      />
-                      <button onClick={handleSaveTemplate} className="text-xs bg-indigo-600 px-2 py-1 rounded text-white">Save</button>
-                      <button onClick={() => setShowTemplateSave(false)} className="text-xs px-2 py-1 text-zinc-400">Cancel</button>
-                  </div>
-              )}
-              
-              <div className="grid gap-3">
-                <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                  {allTemplates.map((t) => (
-                    <div 
-                        key={t.id}
-                        onClick={() => setSettings(s => ({...s, activePrompt: t.value}))}
-                        className={`group relative whitespace-nowrap flex-shrink-0 text-xs px-3 py-2 rounded-md border cursor-pointer transition-all ${
-                            settings.activePrompt === t.value 
-                            ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/50' 
-                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-600'
-                        }`}
-                    >
-                      {t.label}
-                      {!t.id.startsWith('default') && (
-                          <button 
-                            onClick={(e) => handleDeleteTemplate(t.id, e)}
-                            className="ml-2 hover:text-red-400"
-                          >
-                              &times;
-                          </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                
-                <div className="relative">
-                    <textarea 
-                        value={settings.activePrompt}
-                        onChange={(e) => setSettings(s => ({ ...s, activePrompt: e.target.value }))}
-                        className="w-full h-40 bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 text-sm text-zinc-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar leading-relaxed font-mono"
-                        placeholder="Enter your custom system instructions or prompt here..."
-                    />
-                    <div className="absolute bottom-3 right-3 text-[10px] text-zinc-500 bg-zinc-900 px-2 py-1 rounded border border-zinc-800">
-                        Current Prompt
-                    </div>
-                </div>
-              </div>
-            </section>
-            
-          </div>
-
-          <div className="p-5 border-t border-zinc-800 bg-zinc-950 flex justify-end gap-3">
-            <button 
-              onClick={() => setIsSettingsOpen(false)}
-              className="px-5 py-2.5 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
-            >
-              Close
-            </button>
-            <button 
-              onClick={() => setIsSettingsOpen(false)}
-              className="bg-white text-black px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10"
-            >
-              Done
-            </button>
-          </div>
-        </div>
+          )}
       </div>
-    );
-  };
 
-  return (
-    <div className="flex h-full w-full bg-black text-zinc-200 font-sans selection:bg-indigo-500/30 selection:text-indigo-200 overflow-hidden">
-      <Sidebar />
-      <ImageGrid />
-      <EditorPanel />
-      <SettingsModal />
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-zinc-200 dark:border-zinc-800 shadow-2xl p-6 space-y-6">
+                  <div className="flex justify-between items-center"><h2 className="text-xl font-bold">{t('settings')}</h2><button onClick={() => setIsSettingsOpen(false)}><X className="w-5 h-5" /></button></div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                       <div><label className="block text-xs font-bold text-zinc-500 uppercase mb-2">{t('language')}</label><div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg"><button onClick={() => setSettings(s => ({...s, language: 'en'}))} className={`flex-1 py-1 rounded text-xs ${settings.language === 'en' ? 'bg-white dark:bg-zinc-600 shadow' : ''}`}>English</button><button onClick={() => setSettings(s => ({...s, language: 'zh'}))} className={`flex-1 py-1 rounded text-xs ${settings.language === 'zh' ? 'bg-white dark:bg-zinc-600 shadow' : ''}`}>中文</button></div></div>
+                       <div><label className="block text-xs font-bold text-zinc-500 uppercase mb-2">{t('theme')}</label><div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg"><button onClick={() => setSettings(s => ({...s, theme: 'light'}))} className={`flex-1 py-1 rounded text-xs flex items-center justify-center gap-1 ${settings.theme === 'light' ? 'bg-white text-amber-600 shadow' : ''}`}><Sun className="w-3 h-3"/> Light</button><button onClick={() => setSettings(s => ({...s, theme: 'dark'}))} className={`flex-1 py-1 rounded text-xs flex items-center justify-center gap-1 ${settings.theme === 'dark' ? 'bg-zinc-700 text-white shadow' : ''}`}><Moon className="w-3 h-3"/> Dark</button></div></div>
+                  </div>
+
+                  <div className="space-y-3">
+                      <label className="block text-xs font-bold text-zinc-500 uppercase">API Provider</label>
+                      <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-lg mb-2">
+                          <button onClick={() => setSettings(s => ({...s, protocol: 'google'}))} className={`flex-1 py-2 text-xs font-bold rounded-md ${settings.protocol === 'google' ? 'bg-white dark:bg-zinc-600 shadow' : 'opacity-50'}`}>Google Gemini</button>
+                          <button onClick={() => setSettings(s => ({...s, protocol: 'openai_compatible'}))} className={`flex-1 py-2 text-xs font-bold rounded-md ${settings.protocol === 'openai_compatible' ? 'bg-white dark:bg-zinc-600 shadow' : 'opacity-50'}`}>OpenAI Compatible</button>
+                      </div>
+                      <input type="password" value={settings.apiKey} onChange={e => setSettings(s => ({...s, apiKey: e.target.value}))} className="w-full p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-sm" placeholder="API Key" />
+                      <input type="text" value={settings.model} onChange={e => setSettings(s => ({...s, model: e.target.value}))} className="w-full p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-sm" placeholder="Model Name" />
+                      {settings.protocol === 'openai_compatible' && <input type="text" value={settings.baseUrl} onChange={e => setSettings(s => ({...s, baseUrl: e.target.value}))} className="w-full p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-sm" placeholder="Base URL" />}
+                  </div>
+
+                  <div>
+                      <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">{t('activePrompt')}</label>
+                      <div className="flex gap-2 overflow-x-auto pb-2 mb-2 custom-scrollbar">
+                          {[...DEFAULT_TEMPLATES, ...settings.customTemplates].map(tm => (
+                              <button key={tm.id} onClick={() => setSettings(s => ({...s, activePrompt: tm.value}))} className={`whitespace-nowrap px-3 py-1 rounded border text-xs ${settings.activePrompt === tm.value ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'border-zinc-200 dark:border-zinc-700'}`}>{tm.label}</button>
+                          ))}
+                      </div>
+                      <textarea value={settings.activePrompt} onChange={e => setSettings(s => ({...s, activePrompt: e.target.value}))} className="w-full h-32 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-sm font-mono" />
+                  </div>
+
+                  <div className="flex justify-end"><button onClick={() => setIsSettingsOpen(false)} className="bg-zinc-900 dark:bg-white text-white dark:text-black px-6 py-2 rounded-lg font-bold text-sm">{t('done')}</button></div>
+              </div>
+          </div>
+      )}
+
+      <BatchEditModal />
+      <MoveModal />
+      <TutorialModal />
     </div>
   );
 };
