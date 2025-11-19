@@ -2,25 +2,91 @@
 import { GoogleGenAI } from "@google/genai";
 import { AppSettings } from "../types";
 
-// Helper to convert File to Base64 (Raw) - for Gemini
-const fileToBase64Raw = async (file: File): Promise<string> => {
+const MAX_DIMENSION = 1536; // Resize large images to this max dimension to speed up processing
+
+// Helper: Resize image and return Base64 (without prefix) for Gemini
+const processImageForGemini = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result as string;
-      const base64Data = base64String.split(',')[1];
-      resolve(base64Data);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Calculate new dimensions if scaling is needed
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+          if (width > height) {
+            height = Math.round((height * MAX_DIMENSION) / width);
+            width = MAX_DIMENSION;
+          } else {
+            width = Math.round((width * MAX_DIMENSION) / height);
+            height = MAX_DIMENSION;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          // Fallback to raw base64 if canvas fails
+          const raw = event.target?.result as string;
+          resolve(raw.split(',')[1]); 
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Export as JPEG with 0.9 quality for optimal balance
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        resolve(dataUrl.split(',')[1]);
+      };
+      img.onerror = reject;
+      img.src = event.target?.result as string;
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
 };
 
-// Helper to convert File to Data URL - for OpenAI
-const fileToDataURL = async (file: File): Promise<string> => {
+// Helper: Resize image and return DataURL for OpenAI
+const processImageForOpenAI = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+           if (width > height) {
+             height = Math.round((height * MAX_DIMENSION) / width);
+             width = MAX_DIMENSION;
+           } else {
+             width = Math.round((width * MAX_DIMENSION) / height);
+             height = MAX_DIMENSION;
+           }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+           resolve(event.target?.result as string);
+           return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.9));
+      };
+      img.onerror = reject;
+      img.src = event.target?.result as string;
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -28,7 +94,8 @@ const fileToDataURL = async (file: File): Promise<string> => {
 
 const generateWithGoogle = async (file: File, settings: AppSettings): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: settings.apiKey });
-  const base64Data = await fileToBase64Raw(file);
+  // Use smart resizing
+  const base64Data = await processImageForGemini(file);
 
   const response = await ai.models.generateContent({
     model: settings.model || 'gemini-2.5-flash',
@@ -37,7 +104,7 @@ const generateWithGoogle = async (file: File, settings: AppSettings): Promise<st
         {
           inlineData: {
             data: base64Data,
-            mimeType: file.type,
+            mimeType: 'image/jpeg', // Always jpeg after resizing
           },
         },
         { text: settings.activePrompt }
@@ -49,23 +116,19 @@ const generateWithGoogle = async (file: File, settings: AppSettings): Promise<st
 };
 
 const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<string> => {
-  const imageUrl = await fileToDataURL(file);
+  // Use smart resizing
+  const imageUrl = await processImageForOpenAI(file);
   
   let rawBaseUrl = settings.baseUrl.trim();
-  // Remove trailing slashes to simplify logic
   let baseUrl = rawBaseUrl.replace(/\/+$/, "");
   
   let apiUrl = baseUrl;
 
-  // Intelligent URL construction to match standard OpenAI-compatible providers
   if (apiUrl.endsWith('/chat/completions')) {
-     // User provided the full endpoint, trust it.
+     // keep as is
   } else if (apiUrl.endsWith('/v1')) {
-     // User provided .../v1, append /chat/completions
      apiUrl = `${apiUrl}/chat/completions`;
   } else {
-     // User provided root domain (e.g. https://api.example.com)
-     // Most compatible providers require /v1/chat/completions
      apiUrl = `${apiUrl}/v1/chat/completions`;
   }
 
@@ -104,7 +167,7 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
         const errorData = await response.json();
         errorMsg = errorData.error?.message || JSON.stringify(errorData);
       } catch (e) {
-        // ignore json parse error
+        // ignore
       }
       throw new Error(`API Error ${response.status}: ${errorMsg}`);
     }
@@ -113,14 +176,14 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
     const content = data.choices?.[0]?.message?.content;
     
     if (!content && content !== "") {
-       throw new Error("API returned an empty response (no content found).");
+       throw new Error("API returned an empty response.");
     }
     
     return content || "";
   } catch (error: any) {
     console.error("API Request Failed:", error);
     if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-      throw new Error(`Network Error: Could not connect to ${apiUrl}. This is often caused by CORS issues (browser blocking the request) or an incorrect Base URL. Please check if the provider supports browser-based requests.`);
+      throw new Error(`Network Error: Could not connect to ${apiUrl}. Check CORS or URL.`);
     }
     throw error;
   }
