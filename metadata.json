@@ -1,0 +1,5 @@
+{
+  "name": "LoRA Tag Master",
+  "description": "A professional image captioning tool for AI model training (LoRA/Fine-tuning). Features batch processing with Gemini 2.5 Flash, custom prompt templates, and one-click ZIP export.",
+  "requestFramePermissions": []
+}
