@@ -81,6 +81,21 @@ export const useProjectManager = () => {
         })).filter(p => p.images.length > 0));
     }, []);
 
+    const renameImage = useCallback((projectId: string, imageId: string, newName: string) => {
+        setProjects(prev => prev.map(p => {
+            if (p.id !== projectId) return p;
+            return {
+                ...p,
+                images: p.images.map(img => {
+                    if (img.id !== imageId) return img;
+                    // Create a new File object with the new name (preserving other properties)
+                    const newFile = new File([img.file], newName, { type: img.file.type, lastModified: img.file.lastModified });
+                    return { ...img, file: newFile };
+                })
+            };
+        }));
+    }, []);
+
     const updateImageCaption = useCallback((projectId: string, imageId: string, caption: string) => {
         setProjects(prev => prev.map(p => p.id === projectId ? {
             ...p,
@@ -91,11 +106,11 @@ export const useProjectManager = () => {
     const updateImageStatus = useCallback((projectId: string, imageId: string, status: TagImage['status'], errorMsg?: string, caption?: string) => {
         setProjects(prev => prev.map(p => p.id === projectId ? {
             ...p,
-            images: p.images.map(i => i.id === imageId ? { 
-                ...i, 
-                status, 
+            images: p.images.map(i => i.id === imageId ? {
+                ...i,
+                status,
                 errorMsg: errorMsg !== undefined ? errorMsg : i.errorMsg,
-                caption: caption !== undefined ? caption : i.caption 
+                caption: caption !== undefined ? caption : i.caption
             } : i)
         } : p));
     }, []);
@@ -114,11 +129,11 @@ export const useProjectManager = () => {
                 else if (operation === 'addTags' && params.tags) {
                     const currentTags = newCaption.split(',').map(t => t.trim()).filter(Boolean);
                     const existingLower = new Set(currentTags.map(t => t.toLowerCase()));
-                    const uniqueToAdd = params.tags.map((t:string) => t.trim()).filter((t:string) => !existingLower.has(t.toLowerCase()));
+                    const uniqueToAdd = params.tags.map((t: string) => t.trim()).filter((t: string) => !existingLower.has(t.toLowerCase()));
                     if (uniqueToAdd.length > 0) newCaption = [...currentTags, ...uniqueToAdd].join(', ');
                 }
                 else if (operation === 'removeTags' && params.tags) {
-                    const tagsToRemove = new Set(params.tags.map((t:string) => t.trim().toLowerCase()).filter(Boolean));
+                    const tagsToRemove = new Set(params.tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean));
                     newCaption = newCaption.split(',').map(t => t.trim()).filter(t => !tagsToRemove.has(t.toLowerCase())).join(', ');
                 }
                 return { ...img, caption: newCaption };
@@ -130,14 +145,14 @@ export const useProjectManager = () => {
         setProjects(prev => {
             let next = [...prev];
             let destId = targetProjectId;
-            
+
             if (destId === 'new') {
                 destId = crypto.randomUUID();
-                next.push({ 
-                    id: destId, 
-                    name: newProjectName || `Project ${new Date().toLocaleTimeString()}`, 
-                    images: [], 
-                    status: 'idle' 
+                next.push({
+                    id: destId,
+                    name: newProjectName || `Project ${new Date().toLocaleTimeString()}`,
+                    images: [],
+                    status: 'idle'
                 });
             }
 
@@ -164,13 +179,13 @@ export const useProjectManager = () => {
         setProjects(prev => {
             let next = [...prev];
             let destId = targetProjectId;
-             if (destId === 'new') {
+            if (destId === 'new') {
                 destId = crypto.randomUUID();
-                next.push({ 
-                    id: destId, 
-                    name: newProjectName || `Merged Project`, 
-                    images: [], 
-                    status: 'idle' 
+                next.push({
+                    id: destId,
+                    name: newProjectName || `Merged Project`,
+                    images: [],
+                    status: 'idle'
                 });
             }
 
@@ -187,17 +202,17 @@ export const useProjectManager = () => {
             return next;
         });
     }, []);
-    
+
     const retryErrors = useCallback(() => {
         setProjects(prev => prev.map(p => ({
-            ...p, 
-            images: p.images.map(i => i.status === 'error' ? {...i, status: 'idle', errorMsg: undefined} : i)
+            ...p,
+            images: p.images.map(i => i.status === 'error' ? { ...i, status: 'idle', errorMsg: undefined } : i)
         })));
     }, []);
 
     const clearDone = useCallback(() => {
         setProjects(prev => prev.map(p => ({
-            ...p, 
+            ...p,
             images: p.images.filter(i => i.status !== 'success')
         })).filter(p => p.images.length > 0));
     }, []);
@@ -210,6 +225,7 @@ export const useProjectManager = () => {
         addFilesToProject,
         deleteProject,
         removeImages,
+        renameImage,
         updateImageCaption,
         updateImageStatus,
         batchUpdateCaptions,

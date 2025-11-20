@@ -84,6 +84,60 @@ export const SettingsModal = ({
 };
 
 // --- BATCH EDIT MODAL ---
+export const ExportModal = ({
+    isOpen,
+    onClose,
+    onExport,
+    t
+}: {
+    isOpen: boolean,
+    onClose: () => void,
+    onExport: (format: 'txt' | 'json') => void,
+    t: (key: keyof typeof translations['en']) => string
+}) => {
+    const [format, setFormat] = useState<'txt' | 'json'>('txt');
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-sm w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl p-6 space-y-6">
+                <div className="flex justify-between items-center"><h2 className="text-xl font-bold">{t('exportAll')}</h2><button onClick={onClose}><X className="w-5 h-5" /></button></div>
+
+                <div className="space-y-3">
+                    <label className="block text-xs font-bold text-zinc-500 uppercase">Format</label>
+                    <div className="flex flex-col gap-2">
+                        <button onClick={() => setFormat('txt')} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${format === 'txt' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-500/20 dark:border-indigo-500/50 dark:text-indigo-300' : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800'}`}>
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${format === 'txt' ? 'border-indigo-500' : 'border-zinc-400'}`}>
+                                {format === 'txt' && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
+                            </div>
+                            <div className="text-left">
+                                <div className="font-bold text-sm">Text Files (.txt)</div>
+                                <div className="text-xs opacity-70">Standard caption files</div>
+                            </div>
+                        </button>
+                        <button onClick={() => setFormat('json')} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${format === 'json' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-500/20 dark:border-indigo-500/50 dark:text-indigo-300' : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800'}`}>
+                            <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${format === 'json' ? 'border-indigo-500' : 'border-zinc-400'}`}>
+                                {format === 'json' && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
+                            </div>
+                            <div className="text-left">
+                                <div className="font-bold text-sm">JSON Files (.json)</div>
+                                <div className="text-xs opacity-70">Sidecar JSON format</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-2">
+                    <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">Cancel</button>
+                    <button onClick={() => { onExport(format); onClose(); }} className="bg-zinc-900 dark:bg-white text-white dark:text-black px-6 py-2 rounded-lg font-bold text-sm">Export</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- BATCH EDIT MODAL ---
 export const BatchEditModal = ({
     isOpen,
     onClose,

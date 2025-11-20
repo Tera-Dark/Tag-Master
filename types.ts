@@ -34,8 +34,9 @@ export interface AppSettings {
   baseUrl: string; // Used for OpenAI compatible
   model: string;
   activePrompt: string;
-  concurrency: number; // New: Number of simultaneous requests
+  concurrency: number;
   customTemplates: PromptTemplate[];
+  gridColumns: number;
 }
 
 export const DEFAULT_PROMPT = "Describe this image in detail for an AI image generator training dataset. Focus on the subject, clothes, pose, background, lighting, and artistic style. Provide the output as comma-separated keywords.";

@@ -15,14 +15,15 @@ const DEFAULT_SETTINGS: AppSettings = {
     model: 'gemini-2.5-flash',
     activePrompt: DEFAULT_PROMPT,
     concurrency: 3,
-    customTemplates: []
+    customTemplates: [],
+    gridColumns: 5
 };
 
 export const useSettings = () => {
     const [settings, setSettings] = useState<AppSettings>(() => {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
-            try { return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) }; } catch (e) {}
+            try { return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) }; } catch (e) { }
         }
         return DEFAULT_SETTINGS;
     });

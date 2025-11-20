@@ -11,6 +11,27 @@ import {
     ImageIcon
 } from './Icons';
 
+// Interfaces
+interface ImageCardProps {
+    img: TagImage;
+    isSelected: boolean;
+    isMultiSelected: boolean;
+    onPointerDown: (e: React.PointerEvent) => void;
+    onPointerEnter: (e: React.PointerEvent) => void;
+    onRemove: (e: React.MouseEvent) => void;
+    onDoubleClick?: () => void;
+}
+
+interface ListItemProps {
+    img: TagImage;
+    isSelected: boolean;
+    isMultiSelected: boolean;
+    onPointerDown: (e: React.PointerEvent) => void;
+    onPointerEnter: (e: React.PointerEvent) => void;
+    onRemove: (e: React.MouseEvent) => void;
+    onDoubleClick?: () => void;
+}
+
 // Memoized Image Card for Grid View
 export const ImageCard = React.memo(({
     img,
@@ -18,25 +39,20 @@ export const ImageCard = React.memo(({
     isMultiSelected,
     onPointerDown,
     onPointerEnter,
-    onRemove
-}: {
-    img: TagImage,
-    isSelected: boolean,
-    isMultiSelected: boolean,
-    onPointerDown: (e: React.PointerEvent) => void,
-    onPointerEnter: (e: React.PointerEvent) => void,
-    onRemove: (e: React.MouseEvent) => void
-}) => {
+    onRemove,
+    onDoubleClick
+}: ImageCardProps) => {
     return (
         <div
             id={`card-${img.id}`}
             onPointerDown={onPointerDown}
             onPointerEnter={onPointerEnter}
+            onDoubleClick={onDoubleClick}
             className={`relative group aspect-square rounded-xl border cursor-pointer overflow-hidden transition-all duration-200 select-none ${isSelected
-                    ? 'border-indigo-500 ring-2 ring-indigo-500/50 shadow-lg shadow-indigo-500/20 z-10 scale-[1.02]'
-                    : isMultiSelected
-                        ? 'border-indigo-400/50 bg-indigo-50/10 ring-1 ring-indigo-400/30'
-                        : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900'
+                ? 'border-indigo-500 ring-2 ring-indigo-500/50 shadow-lg shadow-indigo-500/20 z-10 scale-[1.02]'
+                : isMultiSelected
+                    ? 'border-indigo-400/50 bg-indigo-50/10 ring-1 ring-indigo-400/30'
+                    : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900'
                 }`}
         >
             {/* Image */}
@@ -86,25 +102,20 @@ export const ListItem = React.memo(({
     isMultiSelected,
     onPointerDown,
     onPointerEnter,
-    onRemove
-}: {
-    img: TagImage,
-    isSelected: boolean,
-    isMultiSelected: boolean,
-    onPointerDown: (e: React.PointerEvent) => void,
-    onPointerEnter: (e: React.PointerEvent) => void,
-    onRemove: (e: React.MouseEvent) => void
-}) => {
+    onRemove,
+    onDoubleClick // Added onDoubleClick
+}: ListItemProps) => {
     return (
         <div
             id={`card-${img.id}`}
             onPointerDown={onPointerDown}
             onPointerEnter={onPointerEnter}
+            onDoubleClick={onDoubleClick} // Added onDoubleClick
             className={`group flex items-center gap-4 p-3 rounded-lg border cursor-pointer select-none transition-all h-24 ${isSelected
-                    ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 ring-1 ring-indigo-500/30 z-10'
-                    : isMultiSelected
-                        ? 'border-indigo-300 bg-indigo-50/30 dark:border-indigo-800 dark:bg-indigo-900/10'
-                        : 'border-transparent bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700'
+                ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 ring-1 ring-indigo-500/30 z-10'
+                : isMultiSelected
+                    ? 'border-indigo-300 bg-indigo-50/30 dark:border-indigo-800 dark:bg-indigo-900/10'
+                    : 'border-transparent bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700'
                 }`}
         >
             {/* Checkbox */}

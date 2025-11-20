@@ -23,8 +23,14 @@ self.onmessage = async (e: MessageEvent) => {
                     // Add caption file if exists
                     if (img.caption) {
                         const fileNameWithoutExt = img.file.name.substring(0, img.file.name.lastIndexOf('.')) || img.file.name;
-                        const textFileName = `${fileNameWithoutExt}.txt`;
-                        folder.file(textFileName, img.caption);
+
+                        if (data.format === 'json') {
+                            const jsonContent = JSON.stringify({ tags: img.caption }, null, 2);
+                            folder.file(`${fileNameWithoutExt}.json`, jsonContent);
+                        } else {
+                            // Default to txt
+                            folder.file(`${fileNameWithoutExt}.txt`, img.caption);
+                        }
                     }
                 }
             }

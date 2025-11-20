@@ -1,9 +1,9 @@
-
 export const translations = {
   en: {
     appTitle: "LoRA Tag Master",
     import: "Import",
     exportAll: "Export All",
+    exportFailed: "Export failed. Please try again.",
     dashboard: "Dashboard",
     spaces: "Spaces",
     settings: "Settings",
@@ -105,8 +105,9 @@ export const translations = {
   },
   zh: {
     appTitle: "LoRA 标注助手",
-    import: "导入图片",
+    import: "导入",
     exportAll: "导出全部",
+    exportFailed: "导出失败,请重试。",
     dashboard: "仪表盘",
     spaces: "项目空间",
     settings: "设置",

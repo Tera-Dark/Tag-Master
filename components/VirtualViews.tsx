@@ -3,20 +3,22 @@ import { TagImage } from '../types';
 import { ImageCard, ListItem } from './ItemViews';
 
 // Virtual List Component (For List View)
-export const VirtualList = ({ 
-    items, 
-    selectedId, 
-    multiSelection, 
+export const VirtualList = ({
+    items,
+    selectedId,
+    multiSelection,
     onCardPointerDown,
     onCardPointerEnter,
-    onRemove
+    onRemove,
+    onDoubleClick
 }: {
     items: { image: TagImage, projectId: string }[],
     selectedId: string | null,
     multiSelection: Set<string>,
     onCardPointerDown: (id: string, e: React.PointerEvent) => void,
     onCardPointerEnter: (id: string, e: React.PointerEvent) => void,
-    onRemove: (id: string, e: React.MouseEvent) => void
+    onRemove: (id: string, e: React.MouseEvent) => void,
+    onDoubleClick?: (id: string) => void
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [scrollTop, setScrollTop] = useState(0);
@@ -31,7 +33,7 @@ export const VirtualList = ({
 
         el.addEventListener('scroll', onScroll);
         window.addEventListener('resize', onResize);
-        
+
         setContainerHeight(el.clientHeight);
 
         return () => {
@@ -57,17 +59,17 @@ export const VirtualList = ({
     return (
         <div ref={containerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar relative outline-none" tabIndex={-1}>
             <div style={{ height: totalHeight, position: 'relative' }}>
-                <div 
+                <div
                     className="flex flex-col gap-2"
-                    style={{ 
-                        position: 'absolute', 
-                        top: startRow * rowHeight, 
-                        left: 0, 
+                    style={{
+                        position: 'absolute',
+                        top: startRow * rowHeight,
+                        left: 0,
                         right: 0,
                     }}
                 >
                     {visibleItems.map(({ image }) => (
-                        <ListItem 
+                        <ListItem
                             key={image.id}
                             img={image}
                             isSelected={selectedId === image.id}
@@ -75,6 +77,7 @@ export const VirtualList = ({
                             onPointerDown={(e) => onCardPointerDown(image.id, e)}
                             onPointerEnter={(e) => onCardPointerEnter(image.id, e)}
                             onRemove={(e) => onRemove(image.id, e)}
+                            onDoubleClick={onDoubleClick ? () => onDoubleClick(image.id) : undefined}
                         />
                     ))}
                 </div>
@@ -83,24 +86,30 @@ export const VirtualList = ({
     );
 };
 
+interface VirtualGridProps {
+    items: { image: TagImage, projectId: string }[];
+    selectedId: string | null;
+    multiSelection: Set<string>;
+    onCardPointerDown: (id: string, e: React.PointerEvent) => void;
+    onCardPointerEnter: (id: string, e: React.PointerEvent) => void;
+    onRemove: (id: string, e: React.MouseEvent) => void;
+    columnCount: number;
+    onSelect?: (id: string, multi: boolean, range: boolean) => void;
+    selectedIds?: Set<string>;
+    onDoubleClick?: (id: string) => void;
+}
+
 // Virtual Grid Component
-export const VirtualGrid = ({ 
-    items, 
-    selectedId, 
-    multiSelection, 
+export const VirtualGrid = ({
+    items,
+    selectedId,
+    multiSelection,
     onCardPointerDown,
     onCardPointerEnter,
     onRemove,
-    columnCount 
-}: {
-    items: { image: TagImage, projectId: string }[],
-    selectedId: string | null,
-    multiSelection: Set<string>,
-    onCardPointerDown: (id: string, e: React.PointerEvent) => void,
-    onCardPointerEnter: (id: string, e: React.PointerEvent) => void,
-    onRemove: (id: string, e: React.MouseEvent) => void,
-    columnCount: number
-}) => {
+    columnCount,
+    onDoubleClick
+}: VirtualGridProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [scrollTop, setScrollTop] = useState(0);
     const [containerHeight, setContainerHeight] = useState(800);
@@ -118,7 +127,7 @@ export const VirtualGrid = ({
 
         el.addEventListener('scroll', onScroll);
         window.addEventListener('resize', onResize);
-        
+
         // Initial measurement
         setContainerHeight(el.clientHeight);
         setClientWidth(el.clientWidth);
@@ -132,7 +141,7 @@ export const VirtualGrid = ({
     // Calculate accurate row height based on column count and spacing
     const gap = 16;
     const itemWidth = (clientWidth - (gap * (columnCount - 1))) / columnCount;
-    const rowHeight = itemWidth + gap; 
+    const rowHeight = itemWidth + gap;
 
     const totalRows = Math.ceil(items.length / columnCount);
     const totalHeight = Math.max(0, totalRows * rowHeight);
@@ -154,18 +163,18 @@ export const VirtualGrid = ({
     return (
         <div ref={containerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar relative outline-none" tabIndex={-1}>
             <div style={{ height: totalHeight, position: 'relative' }}>
-                <div 
+                <div
                     className="grid gap-4"
-                    style={{ 
+                    style={{
                         gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
-                        position: 'absolute', 
-                        top: startRow * rowHeight, 
-                        left: 0, 
+                        position: 'absolute',
+                        top: startRow * rowHeight,
+                        left: 0,
                         right: 0,
                     }}
                 >
                     {visibleItems.map(({ image }) => (
-                        <ImageCard 
+                        <ImageCard
                             key={image.id}
                             img={image}
                             isSelected={selectedId === image.id}
@@ -173,6 +182,7 @@ export const VirtualGrid = ({
                             onPointerDown={(e) => onCardPointerDown(image.id, e)}
                             onPointerEnter={(e) => onCardPointerEnter(image.id, e)}
                             onRemove={(e) => onRemove(image.id, e)}
+                            onDoubleClick={onDoubleClick ? () => onDoubleClick(image.id) : undefined}
                         />
                     ))}
                 </div>

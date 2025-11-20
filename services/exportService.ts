@@ -1,10 +1,9 @@
-
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { TagImage, Project } from '../types';
 
 // Export all projects into a single ZIP with folder structure (Worker-based)
-export const exportAllProjectsToZip = async (projects: Project[]) => {
+export const exportAllProjectsToZip = async (projects: Project[], format: 'txt' | 'json' = 'txt') => {
   const timestamp = new Date().toISOString().slice(0, 10);
 
   // Prepare data for worker (strip non-serializable parts if any, but File objects are transferrable/cloneable)
@@ -35,7 +34,7 @@ export const exportAllProjectsToZip = async (projects: Project[]) => {
     };
 
     // Send data
-    worker.postMessage({ type: 'EXPORT_ALL', data: { projects } });
+    worker.postMessage({ type: 'EXPORT_ALL', data: { projects, format } });
   });
 };
 

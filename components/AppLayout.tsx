@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppSettings, Project, TagImage } from '../types';
 import { translations } from '../utils/i18n';
 import {
@@ -118,6 +118,7 @@ export const Inspector = ({
     onUpdateCaption,
     onRegen,
     onDownload,
+    onRename,
     t
 }: {
     activeImage?: TagImage,
@@ -126,16 +127,56 @@ export const Inspector = ({
     onUpdateCaption: (text: string) => void,
     onRegen: () => void,
     onDownload: () => void,
+    onRename: (newName: string) => void,
     t: (key: keyof typeof translations['en']) => string
 }) => {
+    const [isRenaming, setIsRenaming] = useState(false);
+    const [renameValue, setRenameValue] = useState('');
+
+    useEffect(() => {
+        if (activeImage) setRenameValue(activeImage.file.name);
+    }, [activeImage]);
+
+    const handleRename = () => {
+        if (renameValue && renameValue !== activeImage?.file.name) {
+            onRename(renameValue);
+        }
+        setIsRenaming(false);
+    };
+
     return (
         <div className={`w-80 border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col transition-all duration-300 flex-shrink-0 ${activeImage ? 'translate-x-0' : 'translate-x-full hidden lg:flex lg:translate-x-0'}`}>
             {activeImage ? (
                 <>
-                    <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 font-bold flex justify-between items-center shrink-0">
-                        <span className="truncate max-w-[200px] text-zinc-800 dark:text-zinc-200" title={activeImage.file.name}>{activeImage.file.name}</span>
-                        <div className="flex gap-1 shrink-0">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-zinc-200 dark:border-zinc-700 truncate max-w-[80px]">{inspectorProjectName || 'Unknown'}</span>
+                    <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 font-bold flex flex-col gap-2 shrink-0">
+                        <div className="flex justify-between items-center">
+                            {isRenaming ? (
+                                <input
+                                    autoFocus
+                                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded text-sm border border-indigo-500 outline-none"
+                                    value={renameValue}
+                                    onChange={(e) => setRenameValue(e.target.value)}
+                                    onBlur={handleRename}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+                                />
+                            ) : (
+                                <span
+                                    className="truncate max-w-[200px] text-zinc-800 dark:text-zinc-200 cursor-pointer hover:text-indigo-600"
+                                    title="Click to rename"
+                                    onClick={() => setIsRenaming(true)}
+                                >
+                                    {activeImage.file.name}
+                                </span>
+                            )}
+                            <div className="flex gap-1 shrink-0">
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-zinc-200 dark:border-zinc-700 truncate max-w-[80px]">{inspectorProjectName || 'Unknown'}</span>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 text-[10px] text-zinc-400 font-mono">
+                            <span>{Math.round(activeImage.file.size / 1024)}KB</span>
+                            <span>•</span>
+                            <span>{activeImage.file.type.split('/')[1].toUpperCase()}</span>
+                            {/* Natural dimensions would require loading the image, skipping for now or could be added via onLoad in img tag */}
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
@@ -190,6 +231,8 @@ export const SmartToolbar = ({
     visibleCount,
     stats,
     handlers,
+    settings,
+    setSettings,
     t
 }: {
     viewFilter: 'all' | 'pending' | 'completed',
@@ -209,6 +252,8 @@ export const SmartToolbar = ({
         onRetryErrors: () => void,
         onClearDone: () => void
     },
+    settings: AppSettings,
+    setSettings: (settings: AppSettings) => void,
     t: (key: keyof typeof translations['en']) => string
 }) => {
     return (
@@ -234,6 +279,23 @@ export const SmartToolbar = ({
                 <div className="flex items-center gap-1 bg-zinc-200/50 dark:bg-zinc-950 p-0.5 rounded-lg border border-zinc-300/50 dark:border-zinc-800/50">
                     <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`} title="Grid View"><Grid3X3 className="w-4 h-4" /></button>
                     <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`} title="List View"><List className="w-4 h-4" /></button>
+
+                    {/* Grid Columns Slider */}
+                    {viewMode === 'grid' && (
+                        <div className="flex items-center gap-2 px-2 border-l border-zinc-200 dark:border-zinc-800">
+                            <span className="text-xs font-medium text-zinc-500">Cols: {settings.gridColumns}</span>
+                            <input
+                                type="range"
+                                min="2"
+                                max="12"
+                                value={settings.gridColumns}
+                                onChange={(e) => setSettings({ ...settings, gridColumns: parseInt(e.target.value) })}
+                                className="w-24 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                            />
+                        </div>
+                    )}
+
+                    <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800 mx-2 hidden md:block"></div>
                 </div>
 
                 <div className="h-6 w-px bg-zinc-300 dark:bg-zinc-800 hidden md:block"></div>
