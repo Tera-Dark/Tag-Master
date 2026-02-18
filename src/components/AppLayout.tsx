@@ -5,7 +5,7 @@ import {
     Wand2, HelpCircle, Upload, Archive, LayoutGrid, Folder, Merge, X,
     Play, Pause, Settings, Loader2, CheckCircle, Layers, ListFilter, CheckSquare,
     Grid3X3, List, Search, Square, FolderInput, Trash2, Filter, RotateCcw, Eraser,
-    Download, MousePointer2
+    Download, MousePointer2, ArrowRight, Tags
 } from './Icons';
 
 // --- SIDEBAR ---
@@ -34,7 +34,8 @@ export const Sidebar = ({
         onStartAll: () => void,
         onPause: () => void,
         onOpenSettings: () => void,
-        onOpenTutorial: () => void
+        onOpenTutorial: () => void,
+        onUpdateTriggerWord: (id: string, word: string) => void
     },
     fileInputRef: React.RefObject<HTMLInputElement>,
     t: (key: keyof typeof translations['en']) => string
@@ -50,11 +51,28 @@ export const Sidebar = ({
                 <div className="text-[10px] text-zinc-400 truncate max-w-[100px] font-mono">{settings.model}</div>
             </div>
 
+            {/* Trigger Word Input (Contextual) */}
+            {activeProjectId !== 'all' && (
+                <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800/50 bg-indigo-50/50 dark:bg-indigo-500/5 backdrop-blur-sm">
+                    <label className="text-[10px] uppercase font-bold text-indigo-500 dark:text-indigo-400 mb-1.5 block tracking-wide flex items-center gap-1.5">
+                        <Tags className="w-3 h-3" />
+                        {t('triggerWord')}
+                    </label>
+                    <input
+                        type="text"
+                        placeholder={t('triggerWordPlaceholder')}
+                        className="w-full bg-white dark:bg-zinc-800 border border-indigo-200 dark:border-indigo-500/30 rounded-lg px-2.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm"
+                        value={projects.find(p => p.id === activeProjectId)?.triggerWord || ''}
+                        onChange={(e) => handlers.onUpdateTriggerWord(activeProjectId, e.target.value)}
+                    />
+                </div>
+            )}
+
             <div className="p-3 flex flex-col h-full overflow-hidden">
                 {/* Import/Export Buttons */}
                 <div className="grid grid-cols-2 gap-2 mb-4 shrink-0">
-                    <button onClick={handlers.onImport} className="flex flex-col items-center justify-center gap-1.5 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 py-3 px-2 rounded-xl border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all hover:scale-[1.02] active:scale-95"><Upload className="w-4 h-4" />{t('import')}</button>
-                    <button onClick={handlers.onExport} disabled={projects.length === 0} className="flex flex-col items-center justify-center gap-1.5 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 py-3 px-2 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-xs font-medium disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-95"><Archive className="w-4 h-4" />{t('exportAll')}</button>
+                    <button onClick={handlers.onImport} className="flex flex-col items-center justify-center gap-1.5 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 py-3 px-2 rounded-xl border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all hover:scale-[1.02] active:scale-95 shadow-sm"><Upload className="w-4 h-4" />{t('import')}</button>
+                    <button onClick={handlers.onExport} disabled={projects.length === 0} className="flex flex-col items-center justify-center gap-1.5 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 py-3 px-2 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-xs font-medium disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-95 shadow-sm"><Archive className="w-4 h-4" />{t('exportAll')}</button>
                 </div>
                 <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => { /* Handled by hook in App.tsx, this ref click is just a trigger */ }} />
 
@@ -65,9 +83,9 @@ export const Sidebar = ({
                         <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${activeProjectId === 'all' ? 'bg-white/20 text-white' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}>{projects.reduce((acc, p) => acc + p.images.length, 0)}</span>
                     </button>
 
-                    <div className="px-3 py-2 text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
+                    <div className="px-3 py-3 text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider flex items-center gap-2">
                         <span className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800"></span>
-                        Projects
+                        {t('projects')}
                         <span className="flex-1 h-px bg-zinc-200 dark:bg-zinc-800"></span>
                     </div>
 
@@ -242,6 +260,8 @@ export const SmartToolbar = ({
     handlers,
     settings,
     setSettings,
+    onNext,
+    onStartSelected,
     t
 }: {
     viewFilter: 'all' | 'pending' | 'completed',
@@ -258,31 +278,34 @@ export const SmartToolbar = ({
         onMove: () => void,
         onDeleteSelected: () => void,
         onBatchEdit: () => void,
+        onOpenClean: () => void,
         onRetryErrors: () => void,
         onClearDone: () => void
     },
     settings: AppSettings,
     setSettings: (settings: AppSettings) => void,
+    onNext?: () => void,
+    onStartSelected?: () => void,
     t: (key: keyof typeof translations['en']) => string
 }) => {
     return (
-        <div className="sticky top-0 z-30 bg-zinc-50/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-4 md:px-6 py-3 flex items-center justify-between gap-4 shadow-sm transition-all overflow-x-auto no-scrollbar">
+        <div className="sticky top-0 z-30 bg-zinc-50/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-3 md:px-4 py-2.5 flex items-center justify-between gap-2 shadow-sm transition-all overflow-x-auto no-scrollbar">
             {/* Left Side: Filters & View */}
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
                 {/* View Filters */}
                 <div className="flex items-center gap-1 bg-zinc-200/50 dark:bg-zinc-950 p-1 rounded-xl border border-zinc-300/50 dark:border-zinc-800/50">
-                    <button onClick={() => setViewFilter('all')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'all' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title="All Items"><Layers className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => setViewFilter('pending')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'pending' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title="Pending">
+                    <button onClick={() => setViewFilter('all')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'all' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title="All Items"><Layers className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => setViewFilter('pending')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'pending' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title="Pending">
                         <ListFilter className="w-3.5 h-3.5" />
                         {stats.pending > 0 && <span className="hidden md:inline bg-black/10 dark:bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-mono">{stats.pending}</span>}
                     </button>
-                    <button onClick={() => setViewFilter('completed')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'completed' ? 'bg-emerald-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title="Completed">
+                    <button onClick={() => setViewFilter('completed')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'completed' ? 'bg-emerald-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title="Completed">
                         <CheckSquare className="w-3.5 h-3.5" />
                         {stats.success > 0 && <span className="hidden md:inline bg-black/10 dark:bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-mono">{stats.success}</span>}
                     </button>
                 </div>
 
-                <div className="h-6 w-px bg-zinc-300 dark:bg-zinc-800"></div>
+                <div className="h-5 w-px bg-zinc-300 dark:bg-zinc-800"></div>
 
                 {/* View Mode Toggle */}
                 <div className="flex items-center gap-1 bg-zinc-200/50 dark:bg-zinc-950 p-1 rounded-xl border border-zinc-300/50 dark:border-zinc-800/50">
@@ -292,62 +315,90 @@ export const SmartToolbar = ({
                     {/* Grid Columns Slider */}
                     {viewMode === 'grid' && (
                         <div className="flex items-center gap-2 px-2 border-l border-zinc-200 dark:border-zinc-800">
-                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Cols</span>
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider hidden lg:inline">{t('cols')}</span>
                             <input
                                 type="range"
                                 min="2"
                                 max="12"
                                 value={settings.gridColumns}
                                 onChange={(e) => setSettings({ ...settings, gridColumns: parseInt(e.target.value) })}
-                                className="w-20 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                className="w-16 lg:w-20 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                             />
                         </div>
                     )}
                 </div>
 
-                <div className="h-6 w-px bg-zinc-300 dark:bg-zinc-800 hidden md:block"></div>
+                <div className="h-5 w-px bg-zinc-300 dark:bg-zinc-800 hidden md:block"></div>
 
-                {/* Search */}
-                <div className="relative group hidden md:block">
-                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-indigo-500 transition-colors" />
-                    <input type="text" placeholder={t('searchPlaceholder')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-full pl-9 pr-8 py-2 text-xs w-40 focus:w-64 transition-all dark:text-zinc-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" />
+                {/* Search - Compact but Expandable */}
+                <div className="relative group hidden md:block transition-all duration-300 ease-out w-9 focus-within:w-64">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 group-focus-within:text-indigo-500 transition-colors z-10 pointer-events-none" />
+                    <input
+                        type="text"
+                        placeholder={t('searchPlaceholder')}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className={`bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-full pl-9 pr-8 py-1.5 text-xs transition-all dark:text-zinc-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none w-full ${searchQuery ? 'w-40 md:w-64' : 'w-28 opacity-60 hover:opacity-100 hover:w-40 focus:w-64 focus:opacity-100'}`}
+                    />
                     {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"><X className="w-3 h-3" /></button>}
                 </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
                 {/* Selection Controls */}
-                <button onClick={handlers.onSelectAll} className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold hover:bg-zinc-50 dark:hover:bg-zinc-800 whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title="Ctrl+A">
+                <button onClick={handlers.onSelectAll} className="flex items-center gap-2 px-2.5 py-2 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold hover:bg-zinc-50 dark:hover:bg-zinc-800 whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title="Ctrl+A">
                     {selectionCount === visibleCount && visibleCount > 0 ? <CheckSquare className="w-4 h-4 text-indigo-500" /> : <Square className="w-4 h-4" />}
-                    <span className="hidden sm:inline">{selectionCount > 0 ? `${t('selected')} (${selectionCount})` : t('selectAll')}</span>
+                    <span className="hidden xl:inline">{selectionCount > 0 ? `${t('selected')} (${selectionCount})` : t('selectAll')}</span>
                 </button>
 
                 {selectionCount > 0 && (
-                    <>
-                        <button onClick={handlers.onMove} className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl text-xs font-bold animate-in slide-in-from-right-2 whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('move')}>
+                    <div className="flex items-center gap-1 animate-in slide-in-from-right-2 fade-in duration-200">
+                        {onStartSelected && (
+                            <button onClick={onStartSelected} className="flex items-center gap-2 px-2.5 py-2 bg-indigo-600 text-white hover:bg-indigo-500 border border-indigo-600 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95 shadow-lg shadow-indigo-500/20" title={t('startSelected')}>
+                                <Play className="w-4 h-4 fill-white" />
+                                <span className="hidden xl:inline">{t('startSelected')}</span>
+                            </button>
+                        )}
+
+                        <button onClick={handlers.onMove} className="flex items-center gap-2 px-2.5 py-2 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('move')}>
                             <FolderInput className="w-4 h-4" />
-                            <span className="hidden 2xl:inline">{t('move')}</span>
+                            <span className="hidden xl:inline">{t('move')}</span>
                         </button>
-                        <button onClick={handlers.onDeleteSelected} className="flex items-center gap-2 px-3 py-2 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-xl text-xs font-bold animate-in slide-in-from-right-2 whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('deleteSelected')}>
+                        <button onClick={handlers.onDeleteSelected} className="flex items-center gap-2 px-2.5 py-2 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('deleteSelected')}>
                             <Trash2 className="w-4 h-4" />
-                            <span className="hidden 2xl:inline">{t('deleteSelected')}</span>
+                            <span className="hidden xl:inline">{t('deleteSelected')}</span>
                         </button>
-                    </>
+                    </div>
                 )}
 
+                <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800 mx-1"></div>
+
                 {/* Batch Actions */}
-                <button onClick={handlers.onBatchEdit} className="flex items-center gap-2 px-3 py-2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('batchEdit')}>
+                <button onClick={handlers.onBatchEdit} className="flex items-center gap-2 px-2.5 py-2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('batchEdit')}>
                     <Filter className="w-4 h-4" />
-                    <span className="hidden 2xl:inline">{t('batchEdit')}</span>
+                    <span className="hidden lg:inline">{t('batchEdit')}</span>
+                </button>
+                <button onClick={handlers.onOpenClean} className="flex items-center gap-2 px-2.5 py-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title="Clean Tags (Regex)">
+                    <Eraser className="w-4 h-4" />
+                    <span className="hidden xl:inline">{t('cleanLabel')}</span>
                 </button>
 
                 {/* Utility Actions */}
-                {stats.error > 0 && (
-                    <button onClick={handlers.onRetryErrors} className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 text-amber-600 border border-amber-500/20 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('retry')}><RotateCcw className="w-4 h-4" /> <span className="hidden 2xl:inline">{t('retry')}</span></button>
+                {(stats.error > 0 || stats.success > 0) && (
+                    <div className="flex items-center gap-1">
+                        {stats.error > 0 && (
+                            <button onClick={handlers.onRetryErrors} className="flex items-center gap-2 px-2.5 py-2 bg-amber-500/10 text-amber-600 border border-amber-500/20 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('retry')}><RotateCcw className="w-4 h-4" /> <span className="hidden xl:inline">{t('retry')}</span></button>
+                        )}
+                        {stats.success > 0 && (
+                            <button onClick={handlers.onClearDone} className="flex items-center gap-2 px-2.5 py-2 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:text-red-500 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('clearDone')}><Eraser className="w-4 h-4" /> <span className="hidden xl:inline">{t('clearDone')}</span></button>
+                        )}
+                    </div>
                 )}
 
-                {stats.success > 0 && (
-                    <button onClick={handlers.onClearDone} className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:text-red-500 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('clearDone')}><Eraser className="w-4 h-4" /> <span className="hidden 2xl:inline">{t('clearDone')}</span></button>
+                {onNext && (
+                    <button onClick={onNext} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95 shadow-lg shadow-indigo-500/20 ml-2 animate-in fade-in slide-in-from-right-4">
+                        {t('next')} <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
                 )}
             </div>
         </div>

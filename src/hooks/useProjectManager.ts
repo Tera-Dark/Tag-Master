@@ -136,6 +136,24 @@ export const useProjectManager = () => {
                     const tagsToRemove = new Set(params.tags.map((t: string) => t.trim().toLowerCase()).filter(Boolean));
                     newCaption = newCaption.split(',').map(t => t.trim()).filter(t => !tagsToRemove.has(t.toLowerCase())).join(', ');
                 }
+                else if (operation === 'applyRules' && params.rules) {
+                    params.rules.forEach((rule: any) => {
+                        if (!rule.pattern) return;
+                        try {
+                            let pattern = rule.pattern;
+                            let flags = 'gi';
+                            if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
+                                const lastSlash = pattern.lastIndexOf('/');
+                                flags = pattern.substring(lastSlash + 1);
+                                pattern = pattern.substring(1, lastSlash);
+                            }
+                            const regex = new RegExp(pattern, flags);
+                            newCaption = newCaption.replace(regex, rule.replace || '');
+                        } catch (e) {
+                            // ignore invalid regex
+                        }
+                    });
+                }
                 return { ...img, caption: newCaption };
             })
         })));
@@ -217,6 +235,10 @@ export const useProjectManager = () => {
         })).filter(p => p.images.length > 0));
     }, []);
 
+    const updateProjectTriggerWord = useCallback((projectId: string, triggerWord: string) => {
+        setProjects(prev => prev.map(p => p.id === projectId ? { ...p, triggerWord } : p));
+    }, []);
+
     return {
         projects,
         setProjects, // Exposed for advanced cases or ref updates
@@ -232,6 +254,7 @@ export const useProjectManager = () => {
         moveImages,
         mergeProjects,
         retryErrors,
-        clearDone
+        clearDone,
+        updateProjectTriggerWord
     };
 };
