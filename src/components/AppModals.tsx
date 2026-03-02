@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppSettings, DEFAULT_TEMPLATES, Project } from '../types';
 import { translations } from '../utils/i18n';
 import {
     X, Sun, Moon, BookOpen, Folder, MousePointer2, Wand2, Download, ArrowRight,
-    ChevronDown, Tags, Eraser, Settings, Eye, EyeOff, Plus, Loader2, CheckCircle
+    ChevronDown, Tags, Eraser, Settings, Eye, EyeOff, Plus, Loader2, CheckCircle, RefreshCw,
+    Search
 } from './Icons';
 export { CleanModal } from './CleanModal';
 
@@ -30,14 +31,35 @@ export const SettingsModal = ({
     const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
     const [showApiKey, setShowApiKey] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
+    const [modelsList, setModelsList] = useState<string[]>([]);
+    const [isFetchingModels, setIsFetchingModels] = useState(false);
+    const [fetchModelsMessage, setFetchModelsMessage] = useState('');
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
 
 
     // Sync local state when modal opens or external settings change
     useEffect(() => {
         if (isOpen) {
             setLocalSettings(settings);
+            setIsDropdownOpen(false);
         }
     }, [isOpen, settings]);
+
+    // Handle click outside for dropdown
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsDropdownOpen(false);
+            }
+        };
+        if (isDropdownOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isDropdownOpen]);
 
     // Apply changes and close
     const handleSave = () => {
@@ -61,6 +83,53 @@ export const SettingsModal = ({
         }
     };
 
+    const handleFetchModels = async () => {
+        setIsFetchingModels(true);
+        setFetchModelsMessage('');
+        try {
+            let rawBaseUrl = localSettings.baseUrl.trim().replace(/\/+$/, "");
+            let apiUrl = rawBaseUrl;
+
+            if (apiUrl.endsWith('/chat/completions')) {
+                apiUrl = apiUrl.replace('/chat/completions', '/models');
+            } else if (apiUrl.endsWith('/v1')) {
+                apiUrl = `${apiUrl}/models`;
+            } else {
+                apiUrl = `${apiUrl}/v1/models`;
+            }
+
+            const headers: Record<string, string> = {
+                "Authorization": `Bearer ${localSettings.apiKey}`
+            };
+            if (localSettings.customHeaders) {
+                localSettings.customHeaders.forEach(h => {
+                    if (h.key && h.value) {
+                        headers[h.key] = h.value;
+                    }
+                });
+            }
+
+            const res = await fetch(apiUrl, { headers });
+            if (!res.ok) throw new Error('Fetch failed');
+            const data = await res.json();
+            if (data && Array.isArray(data.data)) {
+                const models = data.data.map((m: any) => m.id).filter(Boolean);
+                setModelsList(models);
+                setFetchModelsMessage(t('fetchModelsSuccess').replace('{count}', models.length.toString()));
+            } else {
+                throw new Error('Invalid format');
+            }
+        } catch (e) {
+            setFetchModelsMessage(t('fetchModelsFailed'));
+        } finally {
+            setIsFetchingModels(false);
+        }
+    };
+
+    // Smart filtering for models
+    const filteredModels = modelsList.filter(m =>
+        m.toLowerCase().includes(localSettings.model.toLowerCase())
+    ).sort((a, b) => a.localeCompare(b));
 
     if (!isOpen) return null;
     return (
@@ -154,16 +223,73 @@ export const SettingsModal = ({
 
                             <div className="relative group/field">
                                 <label className="absolute -top-2 left-3 px-1.5 bg-zinc-50 dark:bg-zinc-900 text-[10px] font-bold text-zinc-400 group-focus-within/field:text-indigo-500 transition-colors">{t('modelName')}</label>
-                                <div className="flex gap-2">
-                                    <input type="text" value={localSettings.model} onChange={e => setLocalSettings(s => ({ ...s, model: e.target.value }))} className="flex-1 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder-zinc-300" placeholder={localSettings.protocol === 'google' ? "gemini-2.0-flash" : "gpt-4-vision-preview"} />
-                                    <button
-                                        onClick={handleTest}
-                                        disabled={isTesting || !localSettings.apiKey}
-                                        className="px-4 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {isTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                                        {t('test')}
-                                    </button>
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex gap-2">
+                                        <div className="flex-1 relative" ref={dropdownRef}>
+                                            <input
+                                                type="text"
+                                                value={localSettings.model}
+                                                onChange={e => {
+                                                    setLocalSettings(s => ({ ...s, model: e.target.value }));
+                                                    setIsDropdownOpen(true);
+                                                }}
+                                                onFocus={() => setIsDropdownOpen(true)}
+                                                className="w-full p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder-zinc-300 pr-10"
+                                                placeholder={localSettings.protocol === 'google' ? "gemini-2.5-flash" : "gpt-4-vision-preview"}
+                                            />
+                                            <button
+                                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 p-1"
+                                            >
+                                                <ChevronDown className={`w-4 h-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                                            </button>
+
+                                            {/* Custom Smart Dropdown */}
+                                            {isDropdownOpen && filteredModels.length > 0 && (
+                                                <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto custom-scrollbar animate-in slide-in-from-top-2 focus-within:ring-2 focus-within:ring-indigo-500">
+                                                    <div className="p-1">
+                                                        {filteredModels.map((m, idx) => (
+                                                            <button
+                                                                key={m}
+                                                                onClick={() => {
+                                                                    setLocalSettings(s => ({ ...s, model: m }));
+                                                                    setIsDropdownOpen(false);
+                                                                }}
+                                                                className={`w-full text-left px-4 py-2.5 text-sm rounded-lg transition-colors flex items-center justify-between group ${localSettings.model === m ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 font-bold' : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
+                                                            >
+                                                                <span className="truncate">{m}</span>
+                                                                {localSettings.model === m && <CheckCircle className="w-4 h-4 opacity-50" />}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {localSettings.protocol === 'openai_compatible' && (
+                                            <button
+                                                onClick={handleFetchModels}
+                                                disabled={isFetchingModels || !localSettings.apiKey || !localSettings.baseUrl}
+                                                title={t('fetchModels')}
+                                                className="px-4 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                {isFetchingModels ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                                                <span className="hidden sm:inline">{t('fetchModels')}</span>
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={handleTest}
+                                            disabled={isTesting || !localSettings.apiKey}
+                                            className="px-4 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                            <span className="hidden sm:inline">{t('test')}</span>
+                                        </button>
+                                    </div>
+                                    {fetchModelsMessage && (
+                                        <div className={`text-xs px-1 ${fetchModelsMessage.includes('Failed') || fetchModelsMessage.includes('失败') ? 'text-red-500' : 'text-emerald-500'}`}>
+                                            {fetchModelsMessage}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -210,6 +336,7 @@ export const SettingsModal = ({
                                                 <button onClick={() => setLocalSettings(s => ({ ...s, customHeaders: [...(s.customHeaders || []), { key: 'HTTP-Referer', value: 'https://your-site.com' }, { key: 'X-Title', value: 'TagMaster' }] }))} className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-700 dark:text-zinc-300">{t('presetOpenAI')}</button>
                                                 <button onClick={() => setLocalSettings(s => ({ ...s, customHeaders: [...(s.customHeaders || []), { key: 'Origin', value: 'https://your-site.com' }] }))} className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-700 dark:text-zinc-300">{t('presetCors')}</button>
                                                 <button onClick={() => setLocalSettings(s => ({ ...s, customHeaders: [...(s.customHeaders || []), { key: 'X-My-Auth', value: 'secret' }] }))} className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-700 dark:text-zinc-300">{t('presetAuth')}</button>
+                                                <button onClick={() => setLocalSettings(s => ({ ...s, customHeaders: [...(s.customHeaders || []), { key: 'HTTP-Referer', value: 'https://github.com/Tag-Master' }, { key: 'X-Title', value: 'Tag-Master' }, { key: 'Accept', value: 'application/json' }, { key: 'Content-Type', value: 'application/json' }] }))} className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-700 dark:text-zinc-300">{t('presetRelay')}</button>
                                             </div>
                                         </div>
                                     </div>
