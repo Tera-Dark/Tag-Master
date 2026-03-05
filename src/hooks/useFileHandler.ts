@@ -46,7 +46,6 @@ export const useFileHandler = (
         let processedAsEntries = false;
 
         if (items && items.length > 0) {
-            // @ts-ignore - webkitGetAsEntry is non-standard but widely supported
             const entries = Array.from(items).map(item => item.webkitGetAsEntry ? item.webkitGetAsEntry() : null).filter((e): e is FileSystemEntry => e !== null);
             if (entries.length > 0) {
                 processedAsEntries = true;

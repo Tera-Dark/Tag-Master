@@ -4,11 +4,10 @@ import { AlertCircle, CheckCircle2, FileText, ImageIcon, Tags, ArrowRight } from
 
 interface ReviewViewProps {
     projects: Project[];
-    t: (key: any) => string;
     onNext: () => void;
 }
 
-export const ReviewView: React.FC<ReviewViewProps> = ({ projects, t, onNext }) => {
+export const ReviewView: React.FC<ReviewViewProps> = ({ projects, onNext }) => {
     // --- Statistics ---
     const stats = useMemo(() => {
         let totalImages = 0;

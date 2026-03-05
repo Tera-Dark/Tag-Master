@@ -7,7 +7,7 @@ export const useSearch = (projects: Project[], activeProjectId: string | 'all') 
     const [viewFilter, setViewFilter] = useState<'all' | 'pending' | 'completed'>('all');
 
     const filteredImages = useMemo(() => {
-        let allImages: { projId: string, img: TagImage }[] = [];
+        const allImages: { projId: string, img: TagImage }[] = [];
 
         if (activeProjectId === 'all') {
             projects.forEach(p => {

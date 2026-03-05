@@ -115,7 +115,16 @@ export const useProjectManager = () => {
         } : p));
     }, []);
 
-    const batchUpdateCaptions = useCallback((targetIds: Set<string>, operation: any, params: any) => {
+    type BatchUpdateParams = {
+        find?: string;
+        replace?: string;
+        prefix?: string;
+        suffix?: string;
+        tags?: string[];
+        rules?: { pattern: string; replace: string }[];
+    };
+
+    const batchUpdateCaptions = useCallback((targetIds: Set<string>, operation: 'replace' | 'prepend' | 'append' | 'addTags' | 'removeTags' | 'applyRules', params: BatchUpdateParams) => {
         setProjects(prev => prev.map(p => ({
             ...p,
             images: p.images.map(img => {
@@ -137,7 +146,7 @@ export const useProjectManager = () => {
                     newCaption = newCaption.split(',').map(t => t.trim()).filter(t => !tagsToRemove.has(t.toLowerCase())).join(', ');
                 }
                 else if (operation === 'applyRules' && params.rules) {
-                    params.rules.forEach((rule: any) => {
+                    params.rules.forEach((rule) => {
                         if (!rule.pattern) return;
                         try {
                             let pattern = rule.pattern;
@@ -174,7 +183,7 @@ export const useProjectManager = () => {
                 });
             }
 
-            let movingImages: TagImage[] = [];
+            const movingImages: TagImage[] = [];
             // Extract images from all projects
             next = next.map(p => {
                 if (p.id === destId) return p; // Don't remove from destination if we are moving within (edge case)
@@ -195,7 +204,7 @@ export const useProjectManager = () => {
 
     const mergeProjects = useCallback((sourceProjectId: string, targetProjectId: string, newProjectName?: string) => {
         setProjects(prev => {
-            let next = [...prev];
+            const next = [...prev];
             let destId = targetProjectId;
             if (destId === 'new') {
                 destId = crypto.randomUUID();

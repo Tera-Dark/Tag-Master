@@ -20,7 +20,6 @@ export const CleanModal: React.FC<CleanModalProps> = ({
     const [newPattern, setNewPattern] = useState('');
     const [newReplace, setNewReplace] = useState('');
     const [testInput, setTestInput] = useState('girl, blue eyes, hat');
-    const [isConfirming, setIsConfirming] = useState(false);
 
     if (!isOpen) return null;
 

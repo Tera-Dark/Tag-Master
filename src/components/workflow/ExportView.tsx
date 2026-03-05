@@ -4,10 +4,9 @@ import { Download, FileText, Code, CheckCircle2 } from '../Icons';
 interface ExportViewProps {
     onExport: (format: 'txt' | 'json') => void;
     totalImages: number;
-    t: (key: any) => string;
 }
 
-export const ExportView: React.FC<ExportViewProps> = ({ onExport, totalImages, t }) => {
+export const ExportView: React.FC<ExportViewProps> = ({ onExport, totalImages }) => {
     const [format, setFormat] = useState<'txt' | 'json'>('txt');
     const [isExporting, setIsExporting] = useState(false);
 

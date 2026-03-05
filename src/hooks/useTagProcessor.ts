@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Project, AppSettings } from '../types';
+import { Project, AppSettings, TagImage } from '../types';
 import { generateCaption } from '../services/geminiService';
 
 export const useTagProcessor = (
     projects: Project[],
     settings: AppSettings,
-    updateImageStatus: (projectId: string, imageId: string, status: any, error?: string, caption?: string) => void,
+    updateImageStatus: (projectId: string, imageId: string, status: TagImage['status'], error?: string, caption?: string) => void,
     onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void
 ) => {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -82,8 +82,9 @@ export const useTagProcessor = (
 
             updateImageStatus(projId, imgId, 'success', undefined, caption);
             onShowToast?.(`Tagged: ${img.file.name}`, 'success');
-        } catch (error: any) {
-            updateImageStatus(projId, imgId, 'error', error.message);
+        } catch (error: unknown) {
+            const err = error as Error;
+            updateImageStatus(projId, imgId, 'error', err.message);
             onShowToast?.(`Failed: ${img.file.name}`, 'error');
         }
     }, [settings, updateImageStatus, onShowToast]);

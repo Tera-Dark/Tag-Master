@@ -1,0 +1,53 @@
+
+> lora-tag-master@1.0.0 lint
+> eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0
+
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\App.tsx
+  444:125  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\Icons.tsx
+  2:8  warning  'React' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\ItemViews.tsx
+  11:5  warning  'ImageIcon' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\workflow\PreprocessView.tsx
+    4:31  warning  'RefreshCw' is defined but never used                                                                         @typescript-eslint/no-unused-vars
+    4:42  warning  'AlertTriangle' is defined but never used                                                                     @typescript-eslint/no-unused-vars
+    5:5   warning  'Check' is defined but never used                                                                             @typescript-eslint/no-unused-vars
+    5:17  warning  'XIcon' is defined but never used                                                                             @typescript-eslint/no-unused-vars
+   43:8   warning  React Hook useEffect has a missing dependency: 'imageDims'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  104:48  warning  'projId' is defined but never used. Allowed unused args must match /^_/u                                      @typescript-eslint/no-unused-vars
+  155:28  warning  'e' is defined but never used. Allowed unused args must match /^_/u                                           @typescript-eslint/no-unused-vars
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\workflow\ReviewView.tsx
+   7:14  warning  Unexpected any. Specify a different type                             @typescript-eslint/no-explicit-any
+  11:67  warning  't' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\workflow\WorkflowStepper.tsx
+  3:10  warning  'ArrowRight' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\hooks\useSelectionManager.ts
+  76:61  warning  'e' is defined but never used. Allowed unused args must match /^_/u  @typescript-eslint/no-unused-vars
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\hooks\useTagProcessor.ts
+   8:69  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  85:25  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\services\fileHelpers.ts
+   9:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   9:71  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  10:18  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  11:39  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  17:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  25:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\services\geminiService.ts
+  155:18  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\wjx19\Documents\GitHub\Tag-Master\src\services\storageService.ts
+  50:15  warning  'previewUrl' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 24 problems (0 errors, 24 warnings)
+

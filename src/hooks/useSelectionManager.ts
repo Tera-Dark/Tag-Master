@@ -5,7 +5,7 @@ import { TagImage } from '../types';
 export const useSelectionManager = (visibleImages: { image: TagImage, projectId: string }[]) => {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [multiSelection, setMultiSelection] = useState<Set<string>>(new Set());
-    
+
     const lastSelectedIdRef = useRef<string | null>(null);
     const isSelectionDraggingRef = useRef(false);
     const selectionModeRef = useRef<'select' | 'deselect'>('select');
@@ -32,7 +32,7 @@ export const useSelectionManager = (visibleImages: { image: TagImage, projectId:
             e.preventDefault();
             const lastIdx = visibleImages.findIndex(v => v.image.id === lastSelectedIdRef.current);
             const currIdx = visibleImages.findIndex(v => v.image.id === id);
-            
+
             if (lastIdx !== -1 && currIdx !== -1) {
                 const start = Math.min(lastIdx, currIdx);
                 const end = Math.max(lastIdx, currIdx);
@@ -64,7 +64,7 @@ export const useSelectionManager = (visibleImages: { image: TagImage, projectId:
             const next = new Set(e.ctrlKey || e.metaKey ? prev : []);
             if (selectionModeRef.current === 'select') next.add(id);
             else next.delete(id);
-            
+
             if (!e.ctrlKey && !e.metaKey) next.add(id); // Ensure current is added on standard click
             return next;
         });
@@ -73,7 +73,7 @@ export const useSelectionManager = (visibleImages: { image: TagImage, projectId:
         lastSelectedIdRef.current = id;
     }, [visibleImages, multiSelection]);
 
-    const handleCardPointerEnter = useCallback((id: string, e: React.PointerEvent) => {
+    const handleCardPointerEnter = useCallback((id: string, _e: React.PointerEvent) => {
         if (isSelectionDraggingRef.current) {
             setMultiSelection(prev => {
                 const next = new Set(prev);

@@ -7,8 +7,7 @@ import {
     AlertCircle,
     Loader2,
     Square,
-    CheckSquare,
-    ImageIcon
+    CheckSquare
 } from './Icons';
 
 // Interfaces

@@ -1,0 +1,93 @@
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\App.tsx[24m[0m
+[0m    [2m3:10[22m  [33mwarning[39m  'Project' is defined but never used                                                                                                     [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m    [2m3:19[22m  [33mwarning[39m  'TagImage' is defined but never used                                                                                                    [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m    [2m3:42[22m  [33mwarning[39m  'PromptTemplate' is defined but never used                                                                                              [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m    [2m3:58[22m  [33mwarning[39m  'DEFAULT_TEMPLATES' is defined but never used                                                                                           [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m    [2m3:77[22m  [33mwarning[39m  'DEFAULT_PROMPT' is defined but never used                                                                                              [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m    [2m4:31[22m  [33mwarning[39m  'X' is defined but never used                                                                                                           [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m   [2m28:6[22m   [33mwarning[39m  'ViewFilter' is defined but never used                                                                                                  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m   [2m34:19[22m  [33mwarning[39m  'isLoaded' is assigned a value but never used                                                                                           [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m   [2m79:25[22m  [33mwarning[39m  Unexpected any. Specify a different type                                                                                                [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m129:8[22m   [33mwarning[39m  React Hook useEffect has missing dependencies: 'setSettings' and 'settings.apiKey'. Either include them or remove the dependency array  [2mreact-hooks/exhaustive-deps[22m[0m
+[0m  [2m152:52[22m  [33mwarning[39m  'setMultiSelection' is assigned a value but never used                                                                                  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m  [2m235:8[22m   [33mwarning[39m  React Hook useEffect has a missing dependency: 'setSelectedId'. Either include it or remove the dependency array                        [2mreact-hooks/exhaustive-deps[22m[0m
+[0m  [2m442:41[22m  [33mwarning[39m  Unexpected any. Specify a different type                                                                                                [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m442:54[22m  [33mwarning[39m  Unexpected any. Specify a different type                                                                                                [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\AppLayout.tsx[24m[0m
+[0m   [2m77:111[22m  [33mwarning[39m  'e' is defined but never used. Allowed unused args must match /^_/u                   [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m  [2m143:5[22m    [33mwarning[39m  'inspectorProjectId' is defined but never used. Allowed unused args must match /^_/u  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\AppModals.tsx[24m[0m
+[0m    [2m7:5[22m    [33mwarning[39m  'Search' is defined but never used                                                                                                [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m  [2m116:50[22m   [33mwarning[39m  Unexpected any. Specify a different type                                                                                          [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m251:81[22m   [33mwarning[39m  'idx' is defined but never used. Allowed unused args must match /^_/u                                                             [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m  [2m508:101[22m  [33mwarning[39m  Unexpected any. Specify a different type                                                                                          [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m733:8[22m    [33mwarning[39m  React Hook useEffect has missing dependencies: 'handleNext' and 'handlePrev'. Either include them or remove the dependency array  [2mreact-hooks/exhaustive-deps[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\CleanModal.tsx[24m[0m
+[0m  [2m23:12[22m  [33mwarning[39m  'isConfirming' is assigned a value but never used     [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m  [2m23:26[22m  [33mwarning[39m  'setIsConfirming' is assigned a value but never used  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\Icons.tsx[24m[0m
+[0m  [2m2:8[22m  [33mwarning[39m  'React' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\ItemViews.tsx[24m[0m
+[0m  [2m11:5[22m  [33mwarning[39m  'ImageIcon' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\workflow\ExportView.tsx[24m[0m
+[0m   [2m7:14[22m  [33mwarning[39m  Unexpected any. Specify a different type                             [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m10:80[22m  [33mwarning[39m  't' is defined but never used. Allowed unused args must match /^_/u  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\workflow\PreprocessView.tsx[24m[0m
+[0m    [2m4:31[22m  [33mwarning[39m  'RefreshCw' is defined but never used                                                                         [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m    [2m4:42[22m  [33mwarning[39m  'AlertTriangle' is defined but never used                                                                     [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m    [2m5:5[22m   [33mwarning[39m  'Check' is defined but never used                                                                             [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m    [2m5:17[22m  [33mwarning[39m  'XIcon' is defined but never used                                                                             [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m   [2m43:8[22m   [33mwarning[39m  React Hook useEffect has a missing dependency: 'imageDims'. Either include it or remove the dependency array  [2mreact-hooks/exhaustive-deps[22m[0m
+[0m  [2m104:48[22m  [33mwarning[39m  'projId' is defined but never used. Allowed unused args must match /^_/u                                      [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m  [2m155:28[22m  [33mwarning[39m  'e' is defined but never used. Allowed unused args must match /^_/u                                           [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\workflow\ReviewView.tsx[24m[0m
+[0m   [2m7:14[22m  [33mwarning[39m  Unexpected any. Specify a different type                             [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m11:67[22m  [33mwarning[39m  't' is defined but never used. Allowed unused args must match /^_/u  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\components\workflow\WorkflowStepper.tsx[24m[0m
+[0m  [2m3:10[22m  [33mwarning[39m  'ArrowRight' is defined but never used  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\hooks\useFileHandler.ts[24m[0m
+[0m  [2m49:13[22m  [31merror[39m  Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  [2m@typescript-eslint/ban-ts-comment[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\hooks\useProjectManager.ts[24m[0m
+[0m  [2m118:81[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m118:94[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m140:49[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\hooks\useSelectionManager.ts[24m[0m
+[0m  [2m76:61[22m  [33mwarning[39m  'e' is defined but never used. Allowed unused args must match /^_/u  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\hooks\useTagProcessor.ts[24m[0m
+[0m   [2m8:69[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m85:25[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\services\fileHelpers.ts[24m[0m
+[0m   [2m9:57[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m   [2m9:71[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m10:18[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m11:39[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m17:37[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m25:40[22m  [33mwarning[39m  Unexpected any. Specify a different type  [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\services\geminiService.ts[24m[0m
+[0m   [2m32:5[22m   [31merror[39m    Use "@ts-expect-error" instead of "@ts-ignore", as "@ts-ignore" will do nothing if the following line is error-free  [2m@typescript-eslint/ban-ts-comment[22m[0m
+[0m  [2m157:18[22m  [33mwarning[39m  Unexpected any. Specify a different type                                                                             [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m199:21[22m  [33mwarning[39m  Unexpected any. Specify a different type                                                                             [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m234:19[22m  [33mwarning[39m  Unexpected any. Specify a different type                                                                             [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m  [2m267:19[22m  [33mwarning[39m  Unexpected any. Specify a different type                                                                             [2m@typescript-eslint/no-explicit-any[22m[0m
+[0m[0m
+[0m[4mC:\Users\wjx19\Documents\GitHub\Tag-Master\src\services\storageService.ts[24m[0m
+[0m  [2m50:15[22m  [33mwarning[39m  'previewUrl' is assigned a value but never used  [2m@typescript-eslint/no-unused-vars[22m[0m
+[0m[0m
+[0m[31m[1m✖ 56 problems (2 errors, 54 warnings)[22m[39m[0m
+[0m[31m[1m[22m[39m[0m

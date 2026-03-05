@@ -1,6 +1,8 @@
 import React from 'react';
 import { WorkflowStep } from '../../types';
-import { ArrowRight, CheckCircle2, Circle } from '../Icons';
+import { CheckCircle2, Circle } from '../Icons';
+
+import { useTranslation } from 'react-i18next';
 
 interface WorkflowStepperProps {
     currentStep: WorkflowStep;
@@ -8,14 +10,15 @@ interface WorkflowStepperProps {
 }
 
 const STEPS = [
-    { id: WorkflowStep.IMPORT, label: 'Import' },
-    { id: WorkflowStep.PREPROCESS, label: 'Preprocess' },
-    { id: WorkflowStep.TAGGING, label: 'Tagging' },
-    { id: WorkflowStep.REVIEW, label: 'Review' },
-    { id: WorkflowStep.EXPORT, label: 'Export' },
+    { id: WorkflowStep.IMPORT, labelKey: 'import' },
+    { id: WorkflowStep.PREPROCESS, labelKey: 'preprocess' },
+    { id: WorkflowStep.TAGGING, labelKey: 'tagging' },
+    { id: WorkflowStep.REVIEW, labelKey: 'review' },
+    { id: WorkflowStep.EXPORT, labelKey: 'export' },
 ];
 
 export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({ currentStep, onStepChange }) => {
+    const { t } = useTranslation();
     const currentIndex = STEPS.findIndex(s => s.id === currentStep);
 
     return (
@@ -56,7 +59,7 @@ export const WorkflowStepper: React.FC<WorkflowStepperProps> = ({ currentStep, o
                                 ${isCompleted ? 'text-zinc-600 dark:text-zinc-400' : ''}
                                 ${isPending ? 'text-zinc-400 dark:text-zinc-600' : ''}
                             `}>
-                                {step.label}
+                                {t(step.labelKey)}
                             </span>
                         </button>
                     );

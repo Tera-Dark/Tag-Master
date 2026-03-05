@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { AppSettings, Project, TagImage } from '../types';
-import { translations } from '../utils/i18n';
 import {
     Wand2, HelpCircle, Upload, Archive, LayoutGrid, Folder, Merge, X,
     Play, Pause, Settings, Loader2, CheckCircle, Layers, ListFilter, CheckSquare,
@@ -38,7 +37,7 @@ export const Sidebar = ({
         onUpdateTriggerWord: (id: string, word: string) => void
     },
     fileInputRef: React.RefObject<HTMLInputElement>,
-    t: (key: keyof typeof translations['en']) => string
+    t: (key: string) => string
 }) => {
     return (
         <div className="w-64 lg:w-72 flex-shrink-0 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col h-full z-20 select-none transition-all duration-300">
@@ -74,7 +73,7 @@ export const Sidebar = ({
                     <button onClick={handlers.onImport} className="flex flex-col items-center justify-center gap-1.5 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 py-3 px-2 rounded-xl border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all hover:scale-[1.02] active:scale-95 shadow-sm"><Upload className="w-4 h-4" />{t('import')}</button>
                     <button onClick={handlers.onExport} disabled={projects.length === 0} className="flex flex-col items-center justify-center gap-1.5 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 py-3 px-2 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-xs font-medium disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-95 shadow-sm"><Archive className="w-4 h-4" />{t('exportAll')}</button>
                 </div>
-                <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => { /* Handled by hook in App.tsx, this ref click is just a trigger */ }} />
+                <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={() => { /* Handled by hook in App.tsx, this ref click is just a trigger */ }} />
 
                 {/* Project List */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-1 mb-4">
@@ -140,7 +139,6 @@ export const Sidebar = ({
 // --- INSPECTOR ---
 export const Inspector = ({
     activeImage,
-    inspectorProjectId,
     inspectorProjectName,
     onUpdateCaption,
     onRegen,
@@ -155,7 +153,7 @@ export const Inspector = ({
     onRegen: () => void,
     onDownload: () => void,
     onRename: (newName: string) => void,
-    t: (key: keyof typeof translations['en']) => string
+    t: (key: string) => string
 }) => {
     const [isRenaming, setIsRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState('');
@@ -239,7 +237,7 @@ export const Inspector = ({
             ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 p-8 text-center">
                     <MousePointer2 className="w-12 h-12 mb-4 opacity-20" />
-                    <p className="text-sm font-medium">Select an image to edit details</p>
+                    <p className="text-sm font-medium">{t('selectAnImage')}</p>
                 </div>
             )}
         </div>
@@ -286,7 +284,7 @@ export const SmartToolbar = ({
     setSettings: (settings: AppSettings) => void,
     onNext?: () => void,
     onStartSelected?: () => void,
-    t: (key: keyof typeof translations['en']) => string
+    t: (key: string) => string
 }) => {
     return (
         <div className="sticky top-0 z-30 bg-zinc-50/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-3 md:px-4 py-2.5 flex items-center justify-between gap-2 shadow-sm transition-all overflow-x-auto no-scrollbar">

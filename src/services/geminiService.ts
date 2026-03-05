@@ -28,8 +28,6 @@ const processImage = async (file: File): Promise<string> => {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Could not get offscreen context');
 
-    // cast to any to satisfy TS/OffscreenCanvas types compatibility if strict
-    // @ts-ignore
     ctx.drawImage(bitmap, 0, 0, width, height);
 
     // Low quality JPEG is fine for vision models usually, but 0.85 is a safe middle ground
@@ -107,8 +105,8 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
   // Use smart resizing
   const imageUrl = await processImage(file);
 
-  let rawBaseUrl = settings.baseUrl.trim();
-  let baseUrl = rawBaseUrl.replace(/\/+$/, "");
+  const rawBaseUrl = settings.baseUrl.trim();
+  const baseUrl = rawBaseUrl.replace(/\/+$/, "");
 
   let apiUrl = baseUrl;
 
@@ -154,7 +152,7 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
   }
 
   // Retry Logic (3 attempts)
-  let lastError: any;
+  let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const controller = new AbortController();
@@ -196,13 +194,14 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
 
       return content || "";
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error;
-      console.warn(`Attempt ${attempt + 1} failed:`, error.message);
+      const err = error as Error;
+      console.warn(`Attempt ${attempt + 1} failed:`, err.message);
 
       // Break on fatal errors (Auth, 404, or abort)
-      if (error.message.includes('Auth Error') || error.message.includes('404')) break;
-      if (error.name === 'AbortError') throw new Error("Request Timeout (60s)");
+      if (err.message.includes('Auth Error') || err.message.includes('404')) break;
+      if (err.name === 'AbortError') throw new Error("Request Timeout (60s)");
 
       // Wait before retry (Exponential backoff: 1s, 2s, 4s)
       if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
@@ -211,10 +210,11 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
 
   // If we get here, all retries failed
   console.error("API Request Failed after retries:", lastError);
-  if (lastError.name === 'TypeError' && lastError.message.includes('Failed to fetch')) {
+  const finalError = lastError as Error;
+  if (finalError.name === 'TypeError' && finalError.message.includes('Failed to fetch')) {
     throw new Error(`Network Error: Could not connect to ${apiUrl}. Check CORS, URL, or your network.`);
   }
-  throw lastError;
+  throw finalError;
 };
 
 export const generateCaption = async (
@@ -231,9 +231,10 @@ export const generateCaption = async (
     } else {
       return await generateWithOpenAI(file, settings);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Generation Error:", error);
-    throw new Error(error.message || "Failed to generate caption");
+    const err = error as Error;
+    throw new Error(err.message || "Failed to generate caption");
   }
 };
 
@@ -264,8 +265,9 @@ export const testConnection = async (settings: AppSettings): Promise<void> => {
     } else {
       await generateWithOpenAI(dummyFile, testSettings);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Connection Test Error:", error);
-    throw new Error(error.message || "Connection Test Failed");
+    const err = error as Error;
+    throw new Error(err.message || "Connection Test Failed");
   }
 };

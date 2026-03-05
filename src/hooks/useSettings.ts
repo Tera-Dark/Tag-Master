@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AppSettings, DEFAULT_PROMPT } from '../types';
-import { translations } from '../utils/i18n';
+import { useTranslation } from 'react-i18next';
 
 const STORAGE_KEY = 'lora-tag-master-settings-v8';
 
@@ -76,10 +76,14 @@ export const useSettings = () => {
         document.documentElement.classList.toggle('dark', settings.theme === 'dark');
     }, [settings.theme]);
 
-    // Translation helper
-    const t = (key: keyof typeof translations['en']) => {
-        return translations[settings.language][key] || translations['en'][key] || key;
-    };
+    const { t, i18n } = useTranslation();
+
+    // Sync language state to i18n
+    useEffect(() => {
+        if (settings.language && i18n.language !== settings.language) {
+            i18n.changeLanguage(settings.language);
+        }
+    }, [settings.language, i18n]);
 
     return { settings, setSettings, t };
 };

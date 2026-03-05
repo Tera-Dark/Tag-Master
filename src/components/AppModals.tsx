@@ -1,16 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppSettings, DEFAULT_TEMPLATES, Project } from '../types';
-import { translations } from '../utils/i18n';
 import {
     X, Sun, Moon, BookOpen, Folder, MousePointer2, Wand2, Download, ArrowRight,
-    ChevronDown, Tags, Eraser, Settings, Eye, EyeOff, Plus, Loader2, CheckCircle, RefreshCw,
-    Search
+    ChevronDown, Tags, Eraser, Settings, Eye, EyeOff, Plus, Loader2, CheckCircle, RefreshCw
 } from './Icons';
 export { CleanModal } from './CleanModal';
 
 const TUTORIAL_SEEN_KEY = 'lora-tag-master-tutorial-seen-v1';
-type TranslationKey = keyof typeof translations['en'];
-
 // --- SETTINGS MODAL ---
 export const SettingsModal = ({
     isOpen,
@@ -24,7 +20,7 @@ export const SettingsModal = ({
     onClose: () => void;
     settings: AppSettings;
     setSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
-    t: (key: TranslationKey) => string;
+    t: (key: string) => string;
     onTestConnection: (settings: AppSettings) => Promise<void>;
 }) => {
     // Local state for buffering changes
@@ -87,7 +83,7 @@ export const SettingsModal = ({
         setIsFetchingModels(true);
         setFetchModelsMessage('');
         try {
-            let rawBaseUrl = localSettings.baseUrl.trim().replace(/\/+$/, "");
+            const rawBaseUrl = localSettings.baseUrl.trim().replace(/\/+$/, "");
             let apiUrl = rawBaseUrl;
 
             if (apiUrl.endsWith('/chat/completions')) {
@@ -113,8 +109,8 @@ export const SettingsModal = ({
             if (!res.ok) throw new Error('Fetch failed');
             const data = await res.json();
             if (data && Array.isArray(data.data)) {
-                const models = data.data.map((m: any) => m.id).filter(Boolean);
-                setModelsList(models);
+                const models = data.data.map((m: { id?: string }) => m.id).filter(Boolean);
+                setModelsList(models as string[]);
                 setFetchModelsMessage(t('fetchModelsSuccess').replace('{count}', models.length.toString()));
             } else {
                 throw new Error('Invalid format');
@@ -221,7 +217,7 @@ export const SettingsModal = ({
                                 </p>
                             </div>
 
-                            <div className="relative group/field">
+                            <div className="relative group/field mt-4">
                                 <label className="absolute -top-2 left-3 px-1.5 bg-zinc-50 dark:bg-zinc-900 text-[10px] font-bold text-zinc-400 group-focus-within/field:text-indigo-500 transition-colors">{t('modelName')}</label>
                                 <div className="flex flex-col gap-2">
                                     <div className="flex gap-2">
@@ -248,7 +244,7 @@ export const SettingsModal = ({
                                             {isDropdownOpen && filteredModels.length > 0 && (
                                                 <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto custom-scrollbar animate-in slide-in-from-top-2 focus-within:ring-2 focus-within:ring-indigo-500">
                                                     <div className="p-1">
-                                                        {filteredModels.map((m, idx) => (
+                                                        {filteredModels.map((m) => (
                                                             <button
                                                                 key={m}
                                                                 onClick={() => {
@@ -448,7 +444,7 @@ export const ExportModal = ({
     isOpen: boolean;
     onClose: () => void;
     onExport: (format: 'txt' | 'json') => void;
-    t: (key: TranslationKey) => string;
+    t: (key: string) => string;
 }) => {
     const [format, setFormat] = useState<'txt' | 'json'>('txt');
 
@@ -505,8 +501,8 @@ export const BatchEditModal = ({
     onClose: () => void;
     visibleCount: number;
     selectedCount: number;
-    onBatchUpdate: (operation: 'replace' | 'prepend' | 'append' | 'addTags' | 'removeTags', params: any, scope: 'all' | 'selected') => void;
-    t: (key: TranslationKey) => string;
+    onBatchUpdate: (operation: 'replace' | 'prepend' | 'append' | 'addTags' | 'removeTags' | 'applyRules', params: unknown, scope: 'all' | 'selected') => void;
+    t: (key: string) => string;
 }) => {
     const [mode, setMode] = useState<'replace' | 'append' | 'smart'>('smart');
     const [findStr, setFindStr] = useState('');
@@ -611,7 +607,7 @@ export const MoveModal = ({
     projects: Project[];
     selectionCount: number;
     onConfirm: (targetId: string, newName: string) => void;
-    t: (key: TranslationKey) => string;
+    t: (key: string) => string;
 }) => {
     const [targetId, setTargetId] = useState('new');
     const [newName, setNewName] = useState('');
@@ -698,7 +694,7 @@ export const TutorialModal = ({
 }: {
     isOpen: boolean,
     onClose: () => void,
-    t: (key: keyof typeof translations['en']) => string
+    t: (key: string) => string
 }) => {
     const [step, setStep] = useState(0);
 
@@ -711,15 +707,16 @@ export const TutorialModal = ({
     ];
 
     const handleNext = () => {
-        if (step < slides.length - 1) setStep(step + 1);
-        else {
+        setStep(s => {
+            if (s < slides.length - 1) return s + 1;
             localStorage.setItem(TUTORIAL_SEEN_KEY, 'true');
             onClose();
-        }
+            return s;
+        });
     };
 
     const handlePrev = () => {
-        if (step > 0) setStep(step - 1);
+        setStep(s => (s > 0 ? s - 1 : s));
     };
 
     useEffect(() => {
@@ -730,7 +727,8 @@ export const TutorialModal = ({
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
-    }, [step, isOpen]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
 
     if (!isOpen) return null;
 

@@ -47,8 +47,7 @@ export const saveProjectsToDB = async (projects: Project[]) => {
     // Ensure we don't save the object URL string as it expires, 
     // but we keep the structure. When loading, we regenerate it.
     pClone.images = pClone.images.map(img => {
-      const { previewUrl, ...rest } = img;
-      return { ...rest, previewUrl: '' }; // Clear ephemeral URL
+      return { ...img, previewUrl: '' }; // Clear ephemeral URL
     });
     return store.put(pClone);
   });

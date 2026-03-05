@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { TagImage, Project } from '../../types';
 import {
-    LayoutTemplate, Scissors, RefreshCw, AlertTriangle,
-    Check, X as XIcon, Maximize2, Move
+    LayoutTemplate, Scissors, Maximize2, Move
 } from '../Icons';
 
 interface PreprocessViewProps {
@@ -40,6 +39,7 @@ export const PreprocessView: React.FC<PreprocessViewProps> = ({ projects, onUpda
                 i.src = img.previewUrl;
             }
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [allImages]); // Dependency on allImages is safe as we check existence
 
     // Calculate buckets
@@ -101,7 +101,7 @@ export const PreprocessView: React.FC<PreprocessViewProps> = ({ projects, onUpda
             {/* Grid */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 pb-20">
-                    {visibleImages.map(({ img, projId }) => {
+                    {visibleImages.map(({ img }) => {
                         const dims = imageDims[img.id];
                         return (
                             <div key={img.id} className="group relative aspect-square bg-zinc-200 dark:bg-zinc-800 rounded-xl overflow-hidden border border-zinc-200 dark:border-zinc-800 hover:border-indigo-500 transition-all">
@@ -152,7 +152,7 @@ const CropEditor = ({ image, onClose, onSave }: { image?: TagImage, onClose: () 
     if (!image) return null;
 
     // Initialize crop to full image on load
-    const contentLoaded = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const contentLoaded = (_e: React.SyntheticEvent<HTMLImageElement>) => {
         if (containerRef.current && imgRef.current) {
             const { width, height } = imgRef.current;
             setCrop({ x: 0, y: 0, w: width / 2, h: height / 2 }); // Default 50% center?

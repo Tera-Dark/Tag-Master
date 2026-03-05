@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { TagImage } from '../types';
 
 // Helper: Check if file is an image
 export const isImageFile = (file: File) => {
-    return file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|tiff|avif|heic)$/i.test(file.name);
+  return file.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|tiff|avif|heic)$/i.test(file.name);
 };
 
 // Helper: Read directory entries recursively
@@ -39,11 +40,11 @@ export const scanEntry = async (entry: any): Promise<File[]> => {
 
 // Helper: Create TagImage objects from Files
 export const createTagImages = (files: File[]): TagImage[] => {
-    return files.map(file => ({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: URL.createObjectURL(file),
-        caption: "",
-        status: 'idle' as const
-    }));
+  return files.map(file => ({
+    id: crypto.randomUUID(),
+    file,
+    previewUrl: URL.createObjectURL(file),
+    caption: "",
+    status: 'idle' as const
+  }));
 };
