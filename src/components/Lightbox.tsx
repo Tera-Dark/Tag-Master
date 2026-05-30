@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { TagImage } from '../types';
 
 interface LightboxProps {
@@ -15,6 +16,7 @@ interface LightboxProps {
 export const Lightbox: React.FC<LightboxProps> = ({
     isOpen, onClose, image, onNext, onPrev, hasNext, hasPrev
 }) => {
+    const { t } = useTranslation();
     const [scale, setScale] = useState(1);
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
@@ -112,7 +114,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
             {/* Caption Overlay */}
             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 via-black/40 to-transparent text-white">
                 <p className="max-w-4xl mx-auto text-center text-sm opacity-90 font-medium leading-relaxed">
-                    {image.caption || <span className="italic opacity-50">No caption</span>}
+                    {image.caption || <span className="italic opacity-50">{t('noCaption')}</span>}
                 </p>
             </div>
         </div>

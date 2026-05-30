@@ -313,7 +313,7 @@ const App: React.FC = () => {
             {isOffline && (
                 <div className="bg-amber-500/10 text-amber-600 dark:text-amber-500 text-sm font-medium py-1.5 px-4 flex items-center justify-center gap-2 border-b border-amber-500/20">
                     <WifiOff size={16} />
-                    <span>{t('offlineWarning') || 'You are currently offline. Local features are still available, but AI generation is disabled.'}</span>
+                    <span>{t('offlineWarning')}</span>
                 </div>
             )}
 

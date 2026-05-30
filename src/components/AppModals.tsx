@@ -146,13 +146,14 @@ export const SettingsModal = ({
                             <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
                                 <button onClick={() => setLocalSettings(s => ({ ...s, language: 'en' }))} className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${localSettings.language === 'en' ? 'bg-white dark:bg-zinc-600 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>English</button>
                                 <button onClick={() => setLocalSettings(s => ({ ...s, language: 'zh' }))} className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${localSettings.language === 'zh' ? 'bg-white dark:bg-zinc-600 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>中文</button>
+                                <button onClick={() => setLocalSettings(s => ({ ...s, language: 'ja' }))} className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${localSettings.language === 'ja' ? 'bg-white dark:bg-zinc-600 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>日本語</button>
                             </div>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">{t('theme')}</label>
                             <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
-                                <button onClick={() => handleThemeChange('light')} className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${localSettings.theme === 'light' ? 'bg-white text-amber-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}><Sun className="w-3.5 h-3.5" /> Light</button>
-                                <button onClick={() => handleThemeChange('dark')} className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${localSettings.theme === 'dark' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}><Moon className="w-3.5 h-3.5" /> Dark</button>
+                                <button onClick={() => handleThemeChange('light')} className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${localSettings.theme === 'light' ? 'bg-white text-amber-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}><Sun className="w-3.5 h-3.5" /> {t('themeLight')}</button>
+                                <button onClick={() => handleThemeChange('dark')} className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${localSettings.theme === 'dark' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}><Moon className="w-3.5 h-3.5" /> {t('themeDark')}</button>
                             </div>
                         </div>
                     </div>
@@ -456,15 +457,15 @@ export const ExportModal = ({
                 <div className="flex justify-between items-center"><h2 className="text-xl font-bold">{t('exportAll')}</h2><button onClick={onClose}><X className="w-5 h-5" /></button></div>
 
                 <div className="space-y-3">
-                    <label className="block text-xs font-bold text-zinc-500 uppercase">Format</label>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase">{t('format')}</label>
                     <div className="flex flex-col gap-2">
                         <button onClick={() => setFormat('txt')} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${format === 'txt' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-500/20 dark:border-indigo-500/50 dark:text-indigo-300' : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800'}`}>
                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${format === 'txt' ? 'border-indigo-500' : 'border-zinc-400'}`}>
                                 {format === 'txt' && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
                             </div>
                             <div className="text-left">
-                                <div className="font-bold text-sm">Text Files (.txt)</div>
-                                <div className="text-xs opacity-70">Standard caption files</div>
+                                <div className="font-bold text-sm">{t('textFilesTxt')}</div>
+                                <div className="text-xs opacity-70">{t('standardCaptionFiles')}</div>
                             </div>
                         </button>
                         <button onClick={() => setFormat('json')} className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${format === 'json' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-500/20 dark:border-indigo-500/50 dark:text-indigo-300' : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800'}`}>
@@ -472,16 +473,16 @@ export const ExportModal = ({
                                 {format === 'json' && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
                             </div>
                             <div className="text-left">
-                                <div className="font-bold text-sm">JSON Files (.json)</div>
-                                <div className="text-xs opacity-70">Sidecar JSON format</div>
+                                <div className="font-bold text-sm">{t('jsonFilesJson')}</div>
+                                <div className="text-xs opacity-70">{t('sidecarJsonFormat')}</div>
                             </div>
                         </button>
                     </div>
                 </div>
 
                 <div className="flex justify-end gap-2">
-                    <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">Cancel</button>
-                    <button onClick={() => { onExport(format); onClose(); }} className="bg-zinc-900 dark:bg-white text-white dark:text-black px-6 py-2 rounded-lg font-bold text-sm">Export</button>
+                    <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">{t('cancel')}</button>
+                    <button onClick={() => { onExport(format); onClose(); }} className="bg-zinc-900 dark:bg-white text-white dark:text-black px-6 py-2 rounded-lg font-bold text-sm">{t('export')}</button>
                 </div>
             </div>
         </div>
