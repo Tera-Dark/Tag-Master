@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TagImage, Project } from '../../types';
 import {
     LayoutTemplate, Scissors, Maximize2, Move
@@ -19,6 +20,7 @@ const getBucket = (width: number, height: number) => {
 };
 
 export const PreprocessView: React.FC<PreprocessViewProps> = ({ projects, onUpdateImage, onNext }) => {
+    const { t } = useTranslation();
     const [selectedBucket, setSelectedBucket] = useState<'all' | 'landscape' | 'portrait' | 'square'>('all');
     const [croppingId, setCroppingId] = useState<string | null>(null); // Image ID being cropped
     const [imageDims, setImageDims] = useState<Record<string, { w: number, h: number }>>({});
@@ -72,17 +74,20 @@ export const PreprocessView: React.FC<PreprocessViewProps> = ({ projects, onUpda
             {/* Toolbar */}
             <div className="flex gap-4 mb-6">
                 <div className="bg-white dark:bg-zinc-900 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 flex shadow-sm">
-                    {(['all', 'landscape', 'portrait', 'square'] as const).map(type => (
-                        <button
-                            key={type}
-                            onClick={() => setSelectedBucket(type)}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${selectedBucket === type ? 'bg-indigo-600 text-white shadow' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
-                        >
-                            <LayoutTemplate className={`w-4 h-4 ${type === 'landscape' ? 'rotate-90' : ''}`} />
-                            <span className="capitalize">{type}</span>
-                            {type !== 'all' && <span className="bg-zinc-200 dark:bg-zinc-700 px-1.5 rounded-full text-xs">{buckets[type]}</span>}
-                        </button>
-                    ))}
+                    {(['all', 'landscape', 'portrait', 'square'] as const).map(type => {
+                        const labelMap = { all: t('bucketAll'), landscape: t('landscape'), portrait: t('portrait'), square: t('square') };
+                        return (
+                            <button
+                                key={type}
+                                onClick={() => setSelectedBucket(type)}
+                                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${selectedBucket === type ? 'bg-indigo-600 text-white shadow' : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
+                            >
+                                <LayoutTemplate className={`w-4 h-4 ${type === 'landscape' ? 'rotate-90' : ''}`} />
+                                <span>{labelMap[type]}</span>
+                                {type !== 'all' && <span className="bg-zinc-200 dark:bg-zinc-700 px-1.5 rounded-full text-xs">{buckets[type]}</span>}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 <div className="flex-1" />
@@ -90,10 +95,10 @@ export const PreprocessView: React.FC<PreprocessViewProps> = ({ projects, onUpda
                 {/* Actions */}
                 <div className="flex gap-2">
                     <button className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm text-zinc-600 font-medium hover:text-indigo-600 flex items-center gap-2 shadow-sm">
-                        <Maximize2 className="w-4 h-4" /> Smart Resize
+                        <Maximize2 className="w-4 h-4" /> {t('smartResize')}
                     </button>
                     <button onClick={onNext} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20 active:scale-95 transition-all">
-                        Next: Tagging <Move className="w-4 h-4" />
+                        {t('nextTagging')} <Move className="w-4 h-4" />
                     </button>
                 </div>
             </div>
@@ -109,13 +114,13 @@ export const PreprocessView: React.FC<PreprocessViewProps> = ({ projects, onUpda
 
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
                                     <div className="text-white text-xs font-mono bg-black/50 px-2 py-1 rounded">
-                                        {dims ? `${dims.w}x${dims.h}` : 'Loading...'}
+                                        {dims ? `${dims.w}x${dims.h}` : t('loading')}
                                     </div>
                                     <button
                                         onClick={() => startCropping(img.id)}
                                         className="bg-white text-zinc-900 px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 hover:scale-105 transition-transform"
                                     >
-                                        <Scissors className="w-3 h-3" /> Crop
+                                        <Scissors className="w-3 h-3" /> {t('cropImage')}
                                     </button>
                                 </div>
                             </div>
@@ -142,6 +147,7 @@ export const PreprocessView: React.FC<PreprocessViewProps> = ({ projects, onUpda
 
 // --- Simple Crop Editor Component (Inline) ---
 const CropEditor = ({ image, onClose, onSave }: { image?: TagImage, onClose: () => void, onSave: (f: File) => void }) => {
+    const { t } = useTranslation();
     const imgRef = useRef<HTMLImageElement>(null);
     const [crop, setCrop] = useState({ x: 0, y: 0, w: 0, h: 0 }); // Percentages? Or Pixels. Let's use Pixels relative to displayed image.
     const containerRef = useRef<HTMLDivElement>(null);
@@ -272,12 +278,12 @@ const CropEditor = ({ image, onClose, onSave }: { image?: TagImage, onClose: () 
 
             <div className="h-20 w-full max-w-2xl bg-zinc-900 rounded-t-xl border-t border-zinc-800 flex items-center justify-between px-8">
                 <div className="flex gap-2">
-                    <button onClick={() => { if (imgRef.current) setCrop({ x: 0, y: 0, w: imgRef.current.width, h: imgRef.current.height }) }} className="text-xs font-bold text-zinc-400 hover:text-white">Full</button>
+                    <button onClick={() => { if (imgRef.current) setCrop({ x: 0, y: 0, w: imgRef.current.width, h: imgRef.current.height }) }} className="text-xs font-bold text-zinc-400 hover:text-white">{t('full')}</button>
                     <button onClick={() => { if (imgRef.current) { const s = Math.min(imgRef.current.width, imgRef.current.height); setCrop({ x: 0, y: 0, w: s, h: s }) } }} className="text-xs font-bold text-zinc-400 hover:text-white">1:1</button>
                 </div>
                 <div className="flex gap-4">
-                    <button onClick={onClose} className="px-6 py-2 text-zinc-400 hover:text-white font-bold">Cancel</button>
-                    <button onClick={handleSave} className="px-8 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg">Save Crop</button>
+                    <button onClick={onClose} className="px-6 py-2 text-zinc-400 hover:text-white font-bold">{t('cancel')}</button>
+                    <button onClick={handleSave} className="px-8 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg">{t('saveCrop')}</button>
                 </div>
             </div>
         </div>

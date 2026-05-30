@@ -126,7 +126,7 @@ export const Sidebar = ({
 
                     <div className="flex gap-2">
                         <button onClick={handlers.onOpenSettings} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:bg-white dark:hover:bg-zinc-800 text-xs font-bold transition-colors shadow-sm"><Settings className="w-3.5 h-3.5" />{t('settings')}</button>
-                        <div className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 flex items-center justify-center" title="Saved">
+                        <div className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 flex items-center justify-center" title={t('saved')}>
                             <CheckCircle className="w-4 h-4 text-emerald-500" />
                         </div>
                     </div>
@@ -187,14 +187,14 @@ export const Inspector = ({
                             ) : (
                                 <span
                                     className="truncate max-w-[200px] text-zinc-800 dark:text-zinc-200 cursor-pointer hover:text-indigo-600"
-                                    title="Click to rename"
+                                    title={t('clickToRename')}
                                     onClick={() => setIsRenaming(true)}
                                 >
                                     {activeImage.file.name}
                                 </span>
                             )}
                             <div className="flex gap-1 shrink-0">
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-zinc-200 dark:border-zinc-700 truncate max-w-[80px]">{inspectorProjectName || 'Unknown'}</span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-zinc-200 dark:border-zinc-700 truncate max-w-[80px]">{inspectorProjectName || t('noCaption')}</span>
                             </div>
                         </div>
                         <div className="flex gap-2 text-[10px] text-zinc-400 font-mono">
@@ -225,11 +225,11 @@ export const Inspector = ({
                                 className="w-full h-48 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-zinc-800 dark:text-zinc-200"
                                 value={activeImage.caption}
                                 onChange={(e) => onUpdateCaption(e.target.value)}
-                                placeholder="Caption..."
+                                placeholder={t('captionPlaceholder')}
                             />
                             <div className="flex justify-between">
-                                <button onClick={onDownload} className="text-xs flex items-center gap-1 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"><Download className="w-3 h-3" /> Save .txt</button>
-                                <span className="text-[10px] text-zinc-400">{activeImage.caption.length} chars</span>
+                                <button onClick={onDownload} className="text-xs flex items-center gap-1 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"><Download className="w-3 h-3" /> {t('saveTxt')}</button>
+                                <span className="text-[10px] text-zinc-400">{activeImage.caption.length} {t('chars')}</span>
                             </div>
                         </div>
                     </div>
@@ -292,12 +292,12 @@ export const SmartToolbar = ({
             <div className="flex items-center gap-2 shrink-0">
                 {/* View Filters */}
                 <div className="flex items-center gap-1 bg-zinc-200/50 dark:bg-zinc-950 p-1 rounded-xl border border-zinc-300/50 dark:border-zinc-800/50">
-                    <button onClick={() => setViewFilter('all')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'all' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title="All Items"><Layers className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => setViewFilter('pending')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'pending' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title="Pending">
+                    <button onClick={() => setViewFilter('all')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'all' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title={t('allItems')}><Layers className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => setViewFilter('pending')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'pending' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title={t('pending')}>
                         <ListFilter className="w-3.5 h-3.5" />
                         {stats.pending > 0 && <span className="hidden md:inline bg-black/10 dark:bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-mono">{stats.pending}</span>}
                     </button>
-                    <button onClick={() => setViewFilter('completed')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'completed' ? 'bg-emerald-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title="Completed">
+                    <button onClick={() => setViewFilter('completed')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${viewFilter === 'completed' ? 'bg-emerald-600 text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'}`} title={t('completed')}>
                         <CheckSquare className="w-3.5 h-3.5" />
                         {stats.success > 0 && <span className="hidden md:inline bg-black/10 dark:bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-mono">{stats.success}</span>}
                     </button>
@@ -307,8 +307,8 @@ export const SmartToolbar = ({
 
                 {/* View Mode Toggle */}
                 <div className="flex items-center gap-1 bg-zinc-200/50 dark:bg-zinc-950 p-1 rounded-xl border border-zinc-300/50 dark:border-zinc-800/50">
-                    <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`} title="Grid View"><Grid3X3 className="w-4 h-4" /></button>
-                    <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`} title="List View"><List className="w-4 h-4" /></button>
+                    <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`} title={t('gridView')}><Grid3X3 className="w-4 h-4" /></button>
+                    <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'}`} title={t('listView')}><List className="w-4 h-4" /></button>
 
                     {/* Grid Columns Slider */}
                     {viewMode === 'grid' && (
@@ -376,7 +376,7 @@ export const SmartToolbar = ({
                     <Filter className="w-4 h-4" />
                     <span className="hidden lg:inline">{t('batchEdit')}</span>
                 </button>
-                <button onClick={handlers.onOpenClean} className="flex items-center gap-2 px-2.5 py-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title="Clean Tags (Regex)">
+                <button onClick={handlers.onOpenClean} className="flex items-center gap-2 px-2.5 py-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all active:scale-95" title={t('cleanTagsRegex')}>
                     <Eraser className="w-4 h-4" />
                     <span className="hidden xl:inline">{t('cleanLabel')}</span>
                 </button>

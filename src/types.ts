@@ -27,7 +27,7 @@ export interface PromptTemplate {
 }
 
 export interface AppSettings {
-  language: 'en' | 'zh';
+  language: 'en' | 'zh' | 'ja';
   theme: 'light' | 'dark'; // New theme setting
   viewMode: 'grid' | 'list'; // New view mode setting
   protocol: AiProtocol;
