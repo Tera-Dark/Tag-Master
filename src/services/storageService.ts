@@ -56,6 +56,29 @@ export const saveProjectsToDB = async (projects: Project[]) => {
   await tx.done;
 };
 
+export const syncProjectsIncrementally = async (updated: Project[], deletedIds: string[]) => {
+  const db = await getDB();
+  const tx = db.transaction('projects', 'readwrite');
+  const store = tx.objectStore('projects');
+
+  // 1. Delete removed projects
+  for (const id of deletedIds) {
+    await store.delete(id);
+  }
+
+  // 2. Add or update changed projects
+  for (const project of updated) {
+    const pClone = { ...project };
+    pClone.images = pClone.images.map(img => ({
+      ...img,
+      previewUrl: '' // Clear ephemeral URL
+    }));
+    await store.put(pClone);
+  }
+
+  await tx.done;
+};
+
 export const loadProjectsFromDB = async (): Promise<Project[]> => {
   const db = await getDB();
   return await db.getAll('projects');

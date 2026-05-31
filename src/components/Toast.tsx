@@ -1,5 +1,5 @@
 
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { X, CheckCircle, AlertCircle, Info } from './Icons';
 
 export type ToastType = 'success' | 'error' | 'info';

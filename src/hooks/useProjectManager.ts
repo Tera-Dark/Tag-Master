@@ -1,40 +1,75 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Project, TagImage } from '../types';
-import { saveProjectsToDB, loadProjectsFromDB } from '../services/storageService';
+import { loadProjectsFromDB, syncProjectsIncrementally } from '../services/storageService';
 import { createTagImages } from '../services/fileHelpers';
+
+const revokeUrl = (url: string) => {
+    if (url && url.startsWith('blob:')) {
+        try {
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.warn("Failed to revoke object URL:", url, e);
+        }
+    }
+};
 
 export const useProjectManager = () => {
     const [projects, setProjects] = useState<Project[]>([]);
     const [isLoaded, setIsLoaded] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
     const saveTimeoutRef = useRef<number | undefined>(undefined);
+    const prevProjectsRef = useRef<Project[]>([]);
 
     // Load from DB on mount
     useEffect(() => {
         loadProjectsFromDB().then(savedProjects => {
             if (savedProjects?.length) {
-                setProjects(savedProjects.map(p => ({
+                const loaded = savedProjects.map(p => ({
                     ...p,
                     images: p.images.map(img => ({
                         ...img,
                         previewUrl: img.file ? URL.createObjectURL(img.file) : '',
                         status: img.status || 'idle'
                     }))
-                })));
+                }));
+                setProjects(loaded);
+                prevProjectsRef.current = loaded;
             }
             setIsLoaded(true);
         }).catch(() => setIsLoaded(true));
     }, []);
 
-    // Auto-save to DB
+    // Auto-save to DB (Incremental Sync)
     useEffect(() => {
         if (!isLoaded) return;
         setSaveStatus('saving');
         clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = window.setTimeout(() => {
-            saveProjectsToDB(projects)
-                .then(() => setSaveStatus('saved'))
-                .catch(() => setSaveStatus('unsaved'));
+        saveTimeoutRef.current = window.setTimeout(async () => {
+            try {
+                const current = projects;
+                const prev = prevProjectsRef.current;
+
+                // 1. Find deleted projects
+                const prevIds = prev.map(p => p.id);
+                const currentIds = current.map(p => p.id);
+                const deletedIds = prevIds.filter(id => !currentIds.includes(id));
+
+                // 2. Find updated/added projects (reference changes or new)
+                const updatedProjects = current.filter(p => {
+                    const prevP = prev.find(old => old.id === p.id);
+                    return !prevP || prevP !== p;
+                });
+
+                if (updatedProjects.length > 0 || deletedIds.length > 0) {
+                    await syncProjectsIncrementally(updatedProjects, deletedIds);
+                }
+
+                prevProjectsRef.current = current;
+                setSaveStatus('saved');
+            } catch (e) {
+                console.error("Incremental save failed:", e);
+                setSaveStatus('unsaved');
+            }
         }, 1000);
         return () => clearTimeout(saveTimeoutRef.current);
     }, [projects, isLoaded]);
@@ -71,14 +106,29 @@ export const useProjectManager = () => {
     }, []);
 
     const deleteProject = useCallback((id: string) => {
-        setProjects(prev => prev.filter(p => p.id !== id));
+        setProjects(prev => {
+            const projectToDelete = prev.find(p => p.id === id);
+            if (projectToDelete) {
+                projectToDelete.images.forEach(img => revokeUrl(img.previewUrl));
+            }
+            return prev.filter(p => p.id !== id);
+        });
     }, []);
 
     const removeImages = useCallback((imageIds: Set<string>) => {
-        setProjects(prev => prev.map(p => ({
-            ...p,
-            images: p.images.filter(img => !imageIds.has(img.id))
-        })).filter(p => p.images.length > 0));
+        setProjects(prev => {
+            prev.forEach(p => {
+                p.images.forEach(img => {
+                    if (imageIds.has(img.id)) {
+                        revokeUrl(img.previewUrl);
+                    }
+                });
+            });
+            return prev.map(p => ({
+                ...p,
+                images: p.images.filter(img => !imageIds.has(img.id))
+            })).filter(p => p.images.length > 0);
+        });
     }, []);
 
     const renameImage = useCallback((projectId: string, imageId: string, newName: string) => {
@@ -238,10 +288,19 @@ export const useProjectManager = () => {
     }, []);
 
     const clearDone = useCallback(() => {
-        setProjects(prev => prev.map(p => ({
-            ...p,
-            images: p.images.filter(i => i.status !== 'success')
-        })).filter(p => p.images.length > 0));
+        setProjects(prev => {
+            prev.forEach(p => {
+                p.images.forEach(img => {
+                    if (img.status === 'success') {
+                        revokeUrl(img.previewUrl);
+                    }
+                });
+            });
+            return prev.map(p => ({
+                ...p,
+                images: p.images.filter(i => i.status !== 'success')
+            })).filter(p => p.images.length > 0);
+        });
     }, []);
 
     const updateProjectTriggerWord = useCallback((projectId: string, triggerWord: string) => {

@@ -214,11 +214,19 @@ const App: React.FC = () => {
                     ...p,
                     images: p.images.map(img => {
                         if (img.id !== imageId) return img;
+                        // Revoke old URL before creating new one
+                        if (img.previewUrl && img.previewUrl.startsWith('blob:')) {
+                            try {
+                                URL.revokeObjectURL(img.previewUrl);
+                            } catch (e) {
+                                console.warn("Failed to revoke object URL:", img.previewUrl, e);
+                            }
+                        }
                         return {
                             ...img,
                             file: newFile,
                             originalFile: img.originalFile || img.file, // Save backup if first edit
-                            previewUrl: URL.createObjectURL(newFile) // Revoke old one? React strict mode might make this tricky, but browser handles eventually.
+                            previewUrl: URL.createObjectURL(newFile)
                         };
                     })
                 };
