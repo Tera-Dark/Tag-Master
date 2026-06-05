@@ -149,5 +149,15 @@
     "cleanLabel": "クリーン",
     "cols": "段数",
     "offlineWarning": "オフラインです。AI 自動生成は使用できません。",
-    "selectAnImage": "画像を選択して詳細を編集します"
+    "selectAnImage": "画像を選択して詳細を編集します",
+    "projectOverview": "プロジェクトの概要",
+    "allProjects": "すべてのデータセット",
+    "overallProgress": "ラベリングの進捗",
+    "totalImages": "総画像数",
+    "failedItems": "エラーアイテム",
+    "instructionTitle": "ヒント",
+    "selectAnImageToEdit": "グリッド内の画像をクリックすると、詳細の確認やキャプションの編集ができます。",
+    "dataTools": "データ整理",
+    "completed": "完了",
+    "pending": "未処理"
 }

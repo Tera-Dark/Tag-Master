@@ -149,5 +149,15 @@
     "cleanLabel": "Clean",
     "cols": "Cols",
     "offlineWarning": "You are currently offline. Local features are still available, but AI generation is disabled.",
-    "selectAnImage": "Select an image to edit details"
+    "selectAnImage": "Select an image to edit details",
+    "projectOverview": "Project Overview",
+    "allProjects": "All Datasets",
+    "overallProgress": "Tagging Progress",
+    "totalImages": "Total Images",
+    "failedItems": "Failed Items",
+    "instructionTitle": "Quick Tips",
+    "selectAnImageToEdit": "Click any image in the grid to view details and edit caption text here.",
+    "dataTools": "Clean & Utils",
+    "completed": "Completed",
+    "pending": "Pending"
 }

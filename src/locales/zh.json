@@ -149,5 +149,15 @@
     "triggerWord": "触发词",
     "triggerWordPlaceholder": "例如：miku_hatsune",
     "offlineWarning": "您当前处于离线状态。本地功能依然可用，但大模型自动打标功能已禁用。",
-    "selectAnImage": "请在左边列表选择一张图像以编辑详情"
+    "selectAnImage": "请在左边列表选择一张图像以编辑详情",
+    "projectOverview": "项目全局概览",
+    "allProjects": "所有数据集",
+    "overallProgress": "打标总体进度",
+    "totalImages": "总图片数",
+    "failedItems": "失败错误数",
+    "instructionTitle": "快捷提示",
+    "selectAnImageToEdit": "点击中间图片网格中的任一图片，即可在右侧查看高清大图并编辑 Caption 标签。",
+    "dataTools": "数据整理",
+    "completed": "已完成",
+    "pending": "待打标"
 }
