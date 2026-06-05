@@ -10,6 +10,35 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false
   },
+  server: {
+    proxy: {
+      '/api/proxy': {
+        target: 'https://api.openai.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api\/proxy/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const targetHeader = req.headers['x-target-url'];
+            if (typeof targetHeader === 'string' && targetHeader) {
+              try {
+                proxyReq.setHeader('host', new URL(targetHeader).host);
+              } catch (e) {
+                // ignore
+              }
+            }
+          });
+        },
+        router: (req) => {
+          const targetHeader = req.headers['x-target-url'];
+          if (typeof targetHeader === 'string' && targetHeader) {
+            return targetHeader.replace(/\/+$/, "");
+          }
+          return 'https://api.openai.com';
+        }
+      }
+    }
+  },
   test: {
     globals: true,
     environment: 'jsdom',

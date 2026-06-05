@@ -1,6 +1,49 @@
 
-import { GoogleGenAI } from "@google/genai";
 import { AppSettings } from "../types";
+
+// Smart network layer: automatic fallback to local Vite dynamic proxy when direct call fails due to CORS or network errors
+const smartFetch = async (url: string, options: RequestInit): Promise<Response> => {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s quick timeout for direct connection detection
+    const res = await fetch(url, {
+      ...options,
+      signal: options.signal || controller.signal
+    });
+    clearTimeout(timeoutId);
+    return res;
+  } catch (err: unknown) {
+    const error = err as Error;
+    const isNetworkOrCorsError = error.name === 'TypeError' && error.message.includes('Failed to fetch');
+    const isTimeout = error.name === 'AbortError';
+
+    const isDevelopment = typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+    if ((isNetworkOrCorsError || isTimeout) && isDevelopment) {
+      console.warn("Direct API call failed/timed out. Falling back to local Vite proxy...", error.message);
+      try {
+        const targetUrl = new URL(url);
+        const origin = targetUrl.origin;
+        const pathname = targetUrl.pathname + targetUrl.search;
+
+        const proxyUrl = `/api/proxy${pathname}`;
+        const proxyHeaders = {
+          ...(options.headers || {}),
+          "X-Target-Url": origin
+        } as Record<string, string>;
+
+        return await fetch(proxyUrl, {
+          ...options,
+          headers: proxyHeaders
+        });
+      } catch (proxySetupError) {
+        console.error("Vite proxy setup failed:", proxySetupError);
+      }
+    }
+    throw err;
+  }
+};
 
 const MAX_DIMENSION = 1536; // Resize large images to this max dimension to speed up processing
 
@@ -60,40 +103,62 @@ const processImage = async (file: File): Promise<string> => {
 };
 
 const generateWithGoogle = async (file: File, settings: AppSettings): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: settings.apiKey });
   // Use smart resizing
   const dataUrl = await processImage(file);
   const base64Data = dataUrl.split(',')[1];
+  const model = settings.model || 'gemini-2.5-flash';
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${settings.apiKey}`;
 
-  const response = await ai.models.generateContent({
-    model: settings.model || 'gemini-2.5-flash',
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType: 'image/jpeg', // Always jpeg after resizing
+  const payload = {
+    contents: [
+      {
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: base64Data
+            }
           },
-        },
-        { text: settings.activePrompt }
-      ]
-    }
+          {
+            text: settings.activePrompt
+          }
+        ]
+      }
+    ]
+  };
+
+  const response = await smartFetch(apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
   });
 
-  const candidate = response.candidates?.[0];
+  if (!response.ok) {
+    let errorMsg = response.statusText;
+    try {
+      const errorData = await response.json();
+      errorMsg = errorData.error?.message || JSON.stringify(errorData);
+    } catch (e) {
+      // ignore
+    }
+    throw new Error(`Gemini API Error ${response.status}: ${errorMsg}`);
+  }
+
+  const data = await response.json();
+  
+  // Check candidates structure
+  const candidate = data.candidates?.[0];
   if (!candidate) {
     throw new Error("API returned no candidates.");
   }
 
-  // Check for truncation
   if (candidate.finishReason === 'MAX_TOKENS') {
-    throw new Error("Response Truncated (Max Tokens). Try increasing the limit or shortening the prompt.");
+    throw new Error("Response Truncated (Max Tokens).");
   }
 
-  // Other finish reasons that might indicate failure, though STOP is the normal one.
-  // We generally accept STOP. 
-
-  const text = response.text;
+  const text = candidate.content?.parts?.[0]?.text;
   if (!text && text !== "") {
     throw new Error("API returned an empty response.");
   }
@@ -158,7 +223,7 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
-      const response = await fetch(apiUrl, {
+      const response = await smartFetch(apiUrl, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
