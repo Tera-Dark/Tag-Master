@@ -41,3 +41,9 @@
 4. **打标图像非阻塞智能压缩 (Vision Input Compress)**：
    - 发送 Vision 大模型请求前，须通过 `processImage` 对图片进行非阻塞尺寸限制。
    - 缩放优先采用 `createImageBitmap` + `OffscreenCanvas`（如果支持）在后台线程进行解码和 JPEG (0.85 质量) 编码，最大边限制为 1536 像素，避免阻塞主线程 UI 渲染。
+
+5. **绝对定位下拉防裁剪规范 (Overflow Visible)**：
+   - 包含绝对定位（`absolute`）下拉浮层的容器组件（如 `SmartToolbar`），在需要支持浮层溢出显示时，**严禁设置 `overflow-x-auto` 或 `overflow-hidden`**，否则下拉浮层在垂直方向会被物理裁剪遮挡。必须设置为 `overflow-visible` 确保交互菜单可见。
+
+6. **React Hook 函数声明与依赖规范 (Declaration Order)**：
+   - 在自定义 Hook (如 `useSelectionManager.ts`) 中，在 `useCallback` 的依赖数组中被引用的函数（如 `clearSelection`），**其物理声明顺序必须早于调用或引用它的 Hook**，以避免在 Vite 生产构建 (tsc) 静态分析时因“声明前使用”导致 TS2448 / TS2454 编译阻断。

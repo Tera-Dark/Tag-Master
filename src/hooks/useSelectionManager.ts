@@ -16,6 +16,11 @@ export const useSelectionManager = (visibleImages: { image: TagImage, projectId:
         return () => window.removeEventListener('pointerup', handleUp);
     }, []);
 
+    const clearSelection = useCallback(() => {
+        setMultiSelection(new Set());
+        setSelectedId(null);
+    }, []);
+
     const handleSelectAll = useCallback(() => {
         if (multiSelection.size === visibleImages.length && visibleImages.length > 0) {
             setMultiSelection(new Set());
@@ -26,6 +31,12 @@ export const useSelectionManager = (visibleImages: { image: TagImage, projectId:
 
     const handleCardPointerDown = useCallback((id: string, e: React.PointerEvent) => {
         if (e.button !== 0) return;
+
+        // 如果点击的刚好是当前被选中查看的单张图片，且当前只选中了它这一张，则触发反选，关闭详情面板
+        if (selectedId === id && multiSelection.size === 1 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+            clearSelection();
+            return;
+        }
 
         // Shift + Click Range Selection
         if (e.shiftKey && lastSelectedIdRef.current) {
@@ -71,7 +82,7 @@ export const useSelectionManager = (visibleImages: { image: TagImage, projectId:
 
         setSelectedId(id);
         lastSelectedIdRef.current = id;
-    }, [visibleImages, multiSelection]);
+    }, [visibleImages, multiSelection, selectedId, clearSelection]);
 
     const handleCardPointerEnter = useCallback((id: string, _e: React.PointerEvent) => {
         if (isSelectionDraggingRef.current) {
@@ -85,10 +96,6 @@ export const useSelectionManager = (visibleImages: { image: TagImage, projectId:
         }
     }, []);
 
-    const clearSelection = useCallback(() => {
-        setMultiSelection(new Set());
-        setSelectedId(null);
-    }, []);
 
     return {
         selectedId,

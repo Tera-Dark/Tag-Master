@@ -53,27 +53,22 @@ export enum WorkflowStep {
   EXPORT = 'export'
 }
 
-export const DEFAULT_PROMPT = "Describe this image in detail for an AI image generator training dataset. Focus on the subject, clothes, pose, background, lighting, and artistic style. Provide the output as comma-separated keywords.";
+export const DEFAULT_PROMPT = "Analyze this image for a LoRA training dataset. Provide a hybrid description combining core Danbooru-style tags and detailed natural language.\nRules:\n1. First part: Output the most important Danbooru tags representing the character, hairstyle, and key outfits, separated by commas (e.g., \"1girl, solo, short_hair, blue_skirt\").\n2. Second part: Followed by a comma, write a descriptive natural language sentence detailing the action, specific pose, background scene, and lighting.\n3. DO NOT use quality modifiers like masterpiece, best quality.\nFormat: tag1, tag2, [natural language description]";
 
 export const DEFAULT_TEMPLATES: PromptTemplate[] = [
   {
     id: 'default-danbooru',
-    label: "Danbooru Tags",
-    value: "Analyze the image and provide a list of accurate Danbooru-style tags. 1. Character: Name (if known), gender, hair color/style, eye color, expression. 2. Appearance: Clothing items, accessories, physical features. 3. Pose: Action, camera angle, framing. 4. Background: Setting, objects, lighting. 5. Meta: Rating, style, quality. Format: tag1, tag2, tag3... (Use underscores for multi-word tags)"
+    label: "Danbooru Tags (纯标签)",
+    value: "Analyze the image and provide a list of precise, comma-separated Danbooru-style tags.\nRules:\n1. Use ONLY Danbooru tags (e.g., 1girl, blue_hair, pleated_skirt, holding_book).\n2. All tags must be lowercase, and spaces must be replaced with underscores.\n3. Identify character features, hairstyle, clothing, pose, and background elements.\n4. DO NOT include quality modifiers (e.g. masterpiece, best quality) or natural language sentences.\nFormat: tag1, tag2, tag3..."
   },
   {
     id: 'default-caption',
-    label: "Natural Language",
-    value: "Describe this image in a detailed, objective, and visual manner. Start with the main subject and their action, then describe their physical appearance (hair, eyes, skin), clothing details, and accessories. Proceed to describe the background, lighting, and color palette. Finish with the artistic style and medium. Avoid poetic language; focus on visual facts."
-  },
-  {
-    id: 'default-sd',
-    label: "Stable Diffusion",
-    value: "Provide a high-quality Stable Diffusion prompt for this image. Start with quality boosters (masterpiece, best quality, highres). Then describe the subject (character, outfit, pose) using specific keywords. Add background and lighting details. End with artistic style tags (e.g. anime style, cel shaded, 4k). Format as comma-separated tags."
+    label: "Natural Language (纯自然语言)",
+    value: "Describe this image in a detailed, objective, and realistic natural language paragraph for AI training.\nRules:\n1. Start directly with the main subject and their action (e.g., \"A photograph of a young woman with blue hair sitting at a desk...\").\n2. Describe details in order: subject (clothing, expression, hairstyle, posture), immediate surroundings, background elements, lighting, and style.\n3. Avoid quality buzzwords (e.g. masterpiece, photorealistic, ultra-detailed) and subjective emotional opinions. Keep the description flowing naturally as a coherent paragraph."
   },
   {
     id: 'default-optimal',
-    label: "Optimal (Mixed)",
-    value: "Analyze this image for a LoRA training dataset. Provide a mix of precise booru-style tags and descriptive natural language phrases. Focus on unique features, specific clothing details, and the overall composition. Ensure the main trigger features are universally described. Format: tag1, tag2, detailed description of outfit, pose, background elements"
+    label: "Optimal Mixed (双混合模式 - 推荐)",
+    value: "Analyze this image for a LoRA training dataset. Provide a hybrid description combining core Danbooru-style tags and detailed natural language.\nRules:\n1. First part: Output the most important Danbooru tags representing the character, hairstyle, and key outfits, separated by commas (e.g., \"1girl, solo, short_hair, blue_skirt\").\n2. Second part: Followed by a comma, write a descriptive natural language sentence detailing the action, specific pose, background scene, and lighting.\n3. DO NOT use quality modifiers like masterpiece, best quality.\nFormat: tag1, tag2, [natural language description]"
   },
 ];

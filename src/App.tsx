@@ -58,6 +58,7 @@ const App: React.FC = () => {
     const [isTutorialOpen, setIsTutorialOpen] = useState(false);
     const [isBatchOpen, setIsBatchOpen] = useState(false);
     const [isOffline, setIsOffline] = useState(!navigator.onLine);
+    const [isInspectorOpen, setIsInspectorOpen] = useState(true);
 
     const [moveState, setMoveState] = useState<{ isOpen: boolean; mode: 'selection' | 'project'; sourceProjectId?: string; }>({ isOpen: false, mode: 'selection' });
     const [lightboxImageId, setLightboxImageId] = useState<string | null>(null);
@@ -341,10 +342,19 @@ const App: React.FC = () => {
         }
     };
 
-    const handleClean = (scope: 'all' | 'selected') => {
+    const handleClean = (
+        scope: 'all' | 'selected',
+        op: 'applyRules' | 'lowercase' | 'underscoreToSpace' | 'spaceToUnderscore' | 'sanitize' = 'applyRules'
+    ) => {
         const targetIds = new Set(scope === 'selected' ? Array.from(multiSelection) : visibleImages.map(v => v.img.id));
-        if (targetIds.size > 0 && settings.replacementRules) {
-            batchUpdateCaptions(targetIds, 'applyRules', { rules: settings.replacementRules });
+        if (targetIds.size > 0) {
+            if (op === 'applyRules') {
+                if (settings.replacementRules) {
+                    batchUpdateCaptions(targetIds, 'applyRules', { rules: settings.replacementRules });
+                }
+            } else {
+                batchUpdateCaptions(targetIds, op, {});
+            }
         }
     };
 
@@ -505,6 +515,21 @@ const App: React.FC = () => {
                                             onDownload={() => activeImage && downloadSingleText(activeImage)}
                                             stats={contextStats}
                                             isProcessing={isProcessing}
+                                            images={visibleImages}
+                                            onTagClick={(tag) => {
+                                                const trimmed = searchQuery.trim();
+                                                if (!trimmed) {
+                                                    setSearchQuery(tag);
+                                                } else {
+                                                    const tags = trimmed.split(',').map(t => t.trim().toLowerCase());
+                                                    if (!tags.includes(tag.toLowerCase())) {
+                                                        setSearchQuery(trimmed + ', ' + tag);
+                                                    }
+                                                }
+                                            }}
+                                            isInspectorOpen={isInspectorOpen}
+                                            onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
+                                            onCloseDetails={() => { setSelectedId(null); clearSelection(); }}
                                             t={t}
                                         />
                                     )}

@@ -174,7 +174,11 @@ export const useProjectManager = () => {
         rules?: { pattern: string; replace: string }[];
     };
 
-    const batchUpdateCaptions = useCallback((targetIds: Set<string>, operation: 'replace' | 'prepend' | 'append' | 'addTags' | 'removeTags' | 'applyRules', params: BatchUpdateParams) => {
+    const batchUpdateCaptions = useCallback((
+        targetIds: Set<string>,
+        operation: 'replace' | 'prepend' | 'append' | 'addTags' | 'removeTags' | 'applyRules' | 'lowercase' | 'underscoreToSpace' | 'spaceToUnderscore' | 'sanitize',
+        params: BatchUpdateParams
+    ) => {
         setProjects(prev => prev.map(p => ({
             ...p,
             images: p.images.map(img => {
@@ -212,6 +216,33 @@ export const useProjectManager = () => {
                             // ignore invalid regex
                         }
                     });
+                }
+                else if (operation === 'lowercase') {
+                    newCaption = newCaption.toLowerCase();
+                }
+                else if (operation === 'underscoreToSpace') {
+                    newCaption = newCaption.replace(/_/g, ' ');
+                }
+                else if (operation === 'spaceToUnderscore') {
+                    newCaption = newCaption.split(',')
+                        .map(tag => tag.trim().replace(/\s+/g, '_'))
+                        .filter(Boolean)
+                        .join(', ');
+                }
+                else if (operation === 'sanitize') {
+                    const tags = newCaption.split(',')
+                        .map(t => t.trim())
+                        .filter(Boolean);
+                    const seen = new Set<string>();
+                    const uniqueTags: string[] = [];
+                    tags.forEach(t => {
+                        const lower = t.toLowerCase();
+                        if (!seen.has(lower)) {
+                            seen.add(lower);
+                            uniqueTags.push(t);
+                        }
+                    });
+                    newCaption = uniqueTags.join(', ');
                 }
                 return { ...img, caption: newCaption };
             })

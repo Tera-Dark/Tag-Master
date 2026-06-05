@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { AppSettings, Project, TagImage } from '../types';
 import {
     Wand2, HelpCircle, Upload, Archive, LayoutGrid, Folder, Merge, X,
@@ -151,6 +152,11 @@ export const Inspector = ({
     onRename,
     stats,
     isProcessing,
+    images,
+    onTagClick,
+    isInspectorOpen,
+    onToggleInspector,
+    onCloseDetails,
     t
 }: {
     activeImage?: TagImage,
@@ -162,10 +168,38 @@ export const Inspector = ({
     onRename: (newName: string) => void,
     stats?: { total: number, completed: number, pending: number, error: number, success: number },
     isProcessing?: boolean,
+    images?: { img: TagImage; projId: string }[],
+    onTagClick?: (tag: string) => void,
+    isInspectorOpen?: boolean,
+    onToggleInspector?: () => void,
+    onCloseDetails?: () => void,
     t: (key: string) => string
 }) => {
     const [isRenaming, setIsRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState('');
+
+    const topTags = useMemo(() => {
+        if (!images || images.length === 0) return [];
+        const counts: Record<string, number> = {};
+
+        images.forEach(item => {
+            const img = item.img;
+            if (img.caption && img.status === 'success') {
+                const tags = img.caption.split(',')
+                    .map(t => t.trim().toLowerCase())
+                    .filter(t => t.length > 0);
+
+                tags.forEach(t => {
+                    counts[t] = (counts[t] || 0) + 1;
+                });
+            }
+        });
+
+        return Object.entries(counts)
+            .map(([tag, count]) => ({ tag, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 12);
+    }, [images]);
 
     useEffect(() => {
         if (activeImage) setRenameValue(activeImage.file.name);
@@ -179,8 +213,31 @@ export const Inspector = ({
     };
 
     return (
-        <div className={`w-80 border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col transition-all duration-300 flex-shrink-0 ${activeImage ? 'translate-x-0' : 'translate-x-full hidden lg:flex lg:translate-x-0'}`}>
-            {activeImage ? (
+        <div 
+            className={`relative h-full flex flex-col flex-shrink-0 transition-all duration-300 ease-in-out z-20 ${
+                isInspectorOpen ? 'w-80' : 'w-0'
+            } ${activeImage ? '' : 'hidden lg:flex'}`}
+        >
+            {/* Toggle Handle Tab */}
+            {activeImage && onToggleInspector && (
+                <div className="absolute top-1/2 left-0 -translate-y-1/2 -translate-x-full z-50">
+                    <button
+                        onClick={onToggleInspector}
+                        className="h-16 w-5 rounded-l-xl bg-white dark:bg-zinc-900 border border-r-0 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-850 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center justify-center shadow-md text-zinc-400 transition-all hover:scale-x-110 active:scale-95 cursor-pointer"
+                        title={isInspectorOpen ? "Collapse sidebar" : "Expand sidebar"}
+                    >
+                        {isInspectorOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+                    </button>
+                </div>
+            )}
+
+            {/* Actual Inspector Panel */}
+            <div 
+                className={`h-full w-80 bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-800 flex flex-col transition-all duration-300 ease-in-out overflow-hidden ${
+                    isInspectorOpen ? 'opacity-100' : 'w-0 border-l-0 opacity-0 pointer-events-none'
+                }`}
+            >
+                {activeImage ? (
                 <div className="flex-grow flex flex-col min-h-0 animate-in fade-in duration-200">
                     <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 font-bold flex flex-col gap-2 shrink-0">
                         <div className="flex justify-between items-center">
@@ -202,8 +259,17 @@ export const Inspector = ({
                                     {activeImage.file.name}
                                 </span>
                             )}
-                            <div className="flex gap-1 shrink-0">
+                            <div className="flex gap-1.5 shrink-0 items-center">
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 border border-zinc-200 dark:border-zinc-700 truncate max-w-[80px]">{inspectorProjectName || 'Unknown'}</span>
+                                {onCloseDetails && (
+                                    <button 
+                                        onClick={onCloseDetails}
+                                        className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-zinc-650 dark:hover:text-zinc-200"
+                                        title="Close details"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <div className="flex gap-2 text-[10px] text-zinc-400 font-mono">
@@ -306,10 +372,34 @@ export const Inspector = ({
                                     <p>{t('selectAnImageToEdit') || '点击中间图片网格中的任一图片，即可在右侧查看高清大图并编辑 Caption 标签。'}</p>
                                 </div>
                             </div>
+
+                            {/* Top Tags Leaderboard */}
+                            {topTags.length > 0 && (
+                                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 shadow-sm mt-3 animate-in fade-in duration-300">
+                                    <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wide mb-3 flex items-center justify-between">
+                                        <span>{t('topTags') || '高频数据集标签'}</span>
+                                        <span className="text-[10px] text-zinc-400 font-mono font-normal">Rank 1-12</span>
+                                    </h3>
+                                    <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                                        {topTags.map(({ tag, count }: { tag: string; count: number }) => (
+                                            <button 
+                                                key={tag} 
+                                                onClick={() => onTagClick?.(tag)}
+                                                className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-50 dark:bg-zinc-950 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 active:scale-95 rounded-lg border border-zinc-200 dark:border-zinc-800 transition-all text-xs font-mono group cursor-pointer"
+                                                title={`Click to filter: ${tag}`}
+                                            >
+                                                <span className="text-zinc-600 dark:text-zinc-400 max-w-[120px] truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400" title={tag}>{tag}</span>
+                                                <span className="bg-zinc-200/60 dark:bg-zinc-850 px-1 py-0.5 rounded text-[9px] text-zinc-500 font-bold group-hover:bg-indigo-200/40 dark:group-hover:bg-indigo-950/60 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{count}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
             )}
+            </div>
         </div>
     );
 };
@@ -359,7 +449,7 @@ export const SmartToolbar = ({
     const [isUtilsOpen, setIsUtilsOpen] = useState(false);
 
     return (
-        <div className="sticky top-0 z-30 bg-zinc-50/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-3 md:px-4 py-2.5 flex items-center justify-between gap-2 shadow-sm transition-all overflow-x-auto no-scrollbar h-14">
+        <div className="sticky top-0 z-30 bg-zinc-50/90 dark:bg-zinc-900/90 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-3 md:px-4 py-2.5 flex items-center justify-between gap-2 shadow-sm transition-all overflow-visible h-14">
             {/* Left Side: Filters & View */}
             <div className="flex items-center gap-2 shrink-0 h-9">
                 {/* View Filters */}
