@@ -139,7 +139,7 @@ export const VirtualGrid = ({
     }, []);
 
     // Calculate accurate row height based on column count and spacing
-    const gap = 16;
+    const gap = 20;
     const itemWidth = (clientWidth - (gap * (columnCount - 1))) / columnCount;
     const rowHeight = itemWidth + gap;
 
@@ -164,7 +164,7 @@ export const VirtualGrid = ({
         <div ref={containerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar relative outline-none" tabIndex={-1}>
             <div style={{ height: totalHeight, position: 'relative' }}>
                 <div
-                    className="grid gap-4"
+                    className="grid gap-5"
                     style={{
                         gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
                         position: 'absolute',

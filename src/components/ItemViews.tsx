@@ -47,11 +47,11 @@ export const ImageCard = React.memo(({
             onPointerDown={onPointerDown}
             onPointerEnter={onPointerEnter}
             onDoubleClick={onDoubleClick}
-            className={`relative group aspect-square rounded-xl border cursor-pointer overflow-hidden transition-all duration-200 select-none ${isSelected
+            className={`relative group aspect-square rounded-xl border cursor-pointer overflow-hidden transition-all duration-300 ease-out select-none ${isSelected
                 ? 'border-indigo-500 ring-2 ring-indigo-500/50 shadow-lg shadow-indigo-500/20 z-10 scale-[1.02]'
                 : isMultiSelected
                     ? 'border-indigo-400/50 bg-indigo-50/10 ring-1 ring-indigo-400/30'
-                    : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900'
+                    : 'border-zinc-200 dark:border-zinc-800 hover:border-indigo-300 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900 hover:-translate-y-1 hover:scale-[1.015] hover:shadow-lg hover:shadow-indigo-500/5'
                 }`}
         >
             {/* Image */}

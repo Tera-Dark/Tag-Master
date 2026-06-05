@@ -452,6 +452,7 @@ const App: React.FC = () => {
                                             onRename={(newName) => inspectorProjectId && activeImage && renameImage(inspectorProjectId, activeImage.id, newName)}
                                             onRegen={() => inspectorProjectId && activeImage && processSingle(inspectorProjectId, activeImage.id)}
                                             onDownload={() => activeImage && downloadSingleText(activeImage)}
+                                            stats={contextStats}
                                             t={t}
                                         />
                                     )}
