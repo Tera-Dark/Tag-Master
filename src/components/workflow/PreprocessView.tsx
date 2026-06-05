@@ -68,7 +68,7 @@ export const PreprocessView: React.FC<PreprocessViewProps> = ({ projects, onUpda
     const startCropping = (id: string) => setCroppingId(id);
 
     return (
-        <div className="flex-1 flex flex-col bg-zinc-50 dark:bg-zinc-950 p-6 overflow-hidden">
+        <div className="flex-1 flex flex-col bg-zinc-50 dark:bg-zinc-950 p-6 overflow-hidden animate-in fade-in duration-300 ease-out">
             {/* Toolbar */}
             <div className="flex gap-4 mb-6">
                 <div className="bg-white dark:bg-zinc-900 p-1 rounded-lg border border-zinc-200 dark:border-zinc-800 flex shadow-sm">
@@ -222,8 +222,8 @@ const CropEditor = ({ image, onClose, onSave }: { image?: TagImage, onClose: () 
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-8 backdrop-blur animate-in fade-in">
-            <div className="flex-1 relative flex items-center justify-center w-full max-w-4xl overflow-hidden"
+        <div className="fixed inset-0 z-50 bg-black/40 dark:bg-black/60 flex flex-col items-center justify-center p-8 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="flex-1 relative flex items-center justify-center w-full max-w-4xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 ease-out"
                 onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
                 <div className="relative" ref={containerRef}>
                     <img
@@ -244,6 +244,11 @@ const CropEditor = ({ image, onClose, onSave }: { image?: TagImage, onClose: () 
                         }}
                         onMouseDown={handleMouseDown}
                     >
+                        {imgRef.current && (
+                            <div className="absolute -top-6 left-0 bg-indigo-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded font-mono select-none pointer-events-none whitespace-nowrap shadow-md border border-indigo-400/20">
+                                {Math.round(crop.w * (imgRef.current.naturalWidth / imgRef.current.width))} × {Math.round(crop.h * (imgRef.current.naturalHeight / imgRef.current.height))} px
+                            </div>
+                        )}
                         {/* Grid Lines */}
                         <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-50">
                             <div className="border-r border-b border-white/30" />

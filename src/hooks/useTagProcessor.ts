@@ -31,14 +31,44 @@ export const useTagProcessor = (
         return filtered.replace(/,\s*,/g, ',').replace(/\s\s+/g, ' ').trim().replace(/^,/, '').replace(/,$/, '');
     };
 
-    const handleTagSingle = useCallback(async (projId: string, imgId: string) => {
+    const handleTagSingle = useCallback(async (projId: string, imgId: string): Promise<boolean> => {
         const currentProject = projectsRef.current.find(p => p.id === projId);
         const img = currentProject?.images.find(i => i.id === imgId);
-        if (!currentProject || !img) return;
+        if (!currentProject || !img) return false;
 
         updateImageStatus(projId, imgId, 'loading');
         try {
-            let caption = await generateCaption(img.file, settings);
+            let caption = '';
+            let attempts = 0;
+            const maxAttempts = 3;
+
+            while (attempts < maxAttempts) {
+                try {
+                    caption = await generateCaption(img.file, settings);
+                    break; // Success
+                } catch (error: unknown) {
+                    attempts++;
+                    const err = error as Error;
+                    const errMsg = err.message || String(error);
+                    const isAuthError = errMsg.includes('401') || errMsg.includes('unauthorized') || errMsg.includes('403') || errMsg.includes('key') || errMsg.includes('Key');
+
+                    if (attempts < maxAttempts && !isAuthError) {
+                        const delay = attempts * 2500;
+                        onShowToast?.(`Retrying ${img.file.name} in ${delay / 1000}s... (${attempts}/${maxAttempts})`, 'info');
+                        const isTestEnv = typeof globalThis !== 'undefined' &&
+                            'process' in globalThis &&
+                            (globalThis as unknown as { process: { env: { NODE_ENV: string } } }).process?.env?.NODE_ENV === 'test';
+                        if (isTestEnv) {
+                            // Skip timeout in unit tests
+                            await Promise.resolve();
+                        } else {
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                    } else {
+                        throw error;
+                    }
+                }
+            }
 
             // Apply filtering (legacy blocked words)
             if (settings.blockedWords && settings.blockedWords.length > 0) {
@@ -82,10 +112,12 @@ export const useTagProcessor = (
 
             updateImageStatus(projId, imgId, 'success', undefined, caption);
             onShowToast?.(`Tagged: ${img.file.name}`, 'success');
+            return true;
         } catch (error: unknown) {
             const err = error as Error;
             updateImageStatus(projId, imgId, 'error', err.message);
             onShowToast?.(`Failed: ${img.file.name}`, 'error');
+            return false;
         }
     }, [settings, updateImageStatus, onShowToast]);
 
@@ -129,11 +161,31 @@ export const useTagProcessor = (
         let active = 0;
         let idx = 0;
 
+        let consecutiveErrors = 0;
         const processNext = async () => {
             if (shouldStopRef.current || idx >= queue.length) return;
+
+            // Offline protection
+            if (!navigator.onLine) {
+                shouldStopRef.current = true;
+                onShowToast?.('Network offline. Processing suspended.', 'error');
+                return;
+            }
+
             const task = queue[idx++];
             active++;
-            try { await handleTagSingle(task.projId, task.imgId); }
+            try { 
+                const success = await handleTagSingle(task.projId, task.imgId); 
+                if (success) {
+                    consecutiveErrors = 0;
+                } else {
+                    consecutiveErrors++;
+                    if (consecutiveErrors >= 5) {
+                        shouldStopRef.current = true;
+                        onShowToast?.('Multiple consecutive errors. Batch paused. Please check API Config.', 'error');
+                    }
+                }
+            }
             finally {
                 active--;
                 if (!shouldStopRef.current) processNext();

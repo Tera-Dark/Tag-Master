@@ -128,9 +128,10 @@ export const SettingsModal = ({
     ).sort((a, b) => a.localeCompare(b));
 
     if (!isOpen) return null;
+
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col">
+        <div className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200 ease-out">
                 {/* Header */}
                 <div className="flex justify-between items-center p-6 border-b border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 z-10">
                     <h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2"><Settings className="w-5 h-5 text-indigo-500" /> {t('settings')}</h2>
@@ -143,16 +144,22 @@ export const SettingsModal = ({
                     <div className="grid grid-cols-2 gap-6">
                         <div>
                             <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">{t('language')}</label>
-                            <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
-                                <button onClick={() => setLocalSettings(s => ({ ...s, language: 'en' }))} className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${localSettings.language === 'en' ? 'bg-white dark:bg-zinc-600 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>English</button>
-                                <button onClick={() => setLocalSettings(s => ({ ...s, language: 'zh' }))} className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${localSettings.language === 'zh' ? 'bg-white dark:bg-zinc-600 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>中文</button>
+                            <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl relative select-none">
+                                <div
+                                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white dark:bg-zinc-650 rounded-lg shadow-sm transition-all duration-300 ease-out ${localSettings.language === 'zh' ? 'left-[calc(50%+2px)]' : 'left-1'}`}
+                                />
+                                <button onClick={() => setLocalSettings(s => ({ ...s, language: 'en' }))} className={`flex-1 py-1.5 rounded-lg text-xs font-medium relative z-10 transition-colors duration-300 ${localSettings.language === 'en' ? 'text-zinc-900 dark:text-white font-bold' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>English</button>
+                                <button onClick={() => setLocalSettings(s => ({ ...s, language: 'zh' }))} className={`flex-1 py-1.5 rounded-lg text-xs font-medium relative z-10 transition-colors duration-300 ${localSettings.language === 'zh' ? 'text-zinc-900 dark:text-white font-bold' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}>中文</button>
                             </div>
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-zinc-500 uppercase mb-2">{t('theme')}</label>
-                            <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
-                                <button onClick={() => handleThemeChange('light')} className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${localSettings.theme === 'light' ? 'bg-white text-amber-600 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}><Sun className="w-3.5 h-3.5" /> Light</button>
-                                <button onClick={() => handleThemeChange('dark')} className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all ${localSettings.theme === 'dark' ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}><Moon className="w-3.5 h-3.5" /> Dark</button>
+                            <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl relative select-none">
+                                <div
+                                    className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white dark:bg-zinc-650 rounded-lg shadow-sm transition-all duration-300 ease-out ${localSettings.theme === 'dark' ? 'left-[calc(50%+2px)]' : 'left-1'}`}
+                                />
+                                <button onClick={() => handleThemeChange('light')} className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 relative z-10 transition-colors duration-300 ${localSettings.theme === 'light' ? 'text-amber-600 font-bold' : 'text-zinc-500 hover:text-zinc-700'}`}><Sun className="w-3.5 h-3.5" /> Light</button>
+                                <button onClick={() => handleThemeChange('dark')} className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 relative z-10 transition-colors duration-300 ${localSettings.theme === 'dark' ? 'text-zinc-900 dark:text-white font-bold' : 'text-zinc-500 hover:text-zinc-300'}`}><Moon className="w-3.5 h-3.5" /> Dark</button>
                             </div>
                         </div>
                     </div>
@@ -451,9 +458,9 @@ export const ExportModal = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-sm w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl p-6 space-y-6">
-                <div className="flex justify-between items-center"><h2 className="text-xl font-bold">{t('exportAll')}</h2><button onClick={onClose}><X className="w-5 h-5" /></button></div>
+        <div className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl max-w-sm w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200 ease-out">
+                <div className="flex justify-between items-center"><h2 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">{t('exportAll')}</h2><button onClick={onClose} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"><X className="w-5 h-5 text-zinc-500" /></button></div>
 
                 <div className="space-y-3">
                     <label className="block text-xs font-bold text-zinc-500 uppercase">Format</label>
@@ -516,8 +523,8 @@ export const BatchEditModal = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200 ease-out">
                 <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
                     <div><h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-100">{t('batchTitle')}</h2><p className="text-xs text-zinc-500">{t('batchSubtitle')}</p></div>
                     <button onClick={onClose}><X className="w-4 h-4 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300" /></button>
@@ -535,24 +542,24 @@ export const BatchEditModal = ({
                             <>
                                 <div>
                                     <label className="text-xs font-medium text-emerald-600 dark:text-emerald-400 block mb-1.5 flex gap-2 items-center"><Tags className="w-3 h-3" /> {t('addTags')}</label>
-                                    <input value={addTagsStr} onChange={e => setAddTagsStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder={t('addTagsPlaceholder')} />
+                                    <input autoFocus value={addTagsStr} onChange={e => setAddTagsStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('addTagsPlaceholder')} />
                                 </div>
                                 <div>
                                     <label className="text-xs font-medium text-red-600 dark:text-red-400 block mb-1.5 flex gap-2 items-center"><Eraser className="w-3 h-3" /> {t('removeTags')}</label>
-                                    <input value={removeTagsStr} onChange={e => setRemoveTagsStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder={t('removeTagsPlaceholder')} />
+                                    <input value={removeTagsStr} onChange={e => setRemoveTagsStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder={t('removeTagsPlaceholder')} />
                                 </div>
                             </>
                         )}
                         {mode === 'replace' && (
                             <>
-                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('find')}</label><input value={findStr} onChange={e => setFindStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder="e.g. cat" /></div>
-                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('replaceWith')}</label><input value={replaceStr} onChange={e => setReplaceStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder="empty to remove" /></div>
+                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('find')}</label><input autoFocus value={findStr} onChange={e => setFindStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. cat" /></div>
+                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('replaceWith')}</label><input value={replaceStr} onChange={e => setReplaceStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="empty to remove" /></div>
                             </>
                         )}
                         {mode === 'append' && (
                             <>
-                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('prefix')}</label><input value={prefixStr} onChange={e => setPrefixStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder="masterpiece, " /></div>
-                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('suffix')}</label><input value={suffixStr} onChange={e => setSuffixStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white" placeholder=", 4k" /></div>
+                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('prefix')}</label><input autoFocus value={prefixStr} onChange={e => setPrefixStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="masterpiece, " /></div>
+                                <div><label className="text-xs font-medium text-zinc-500 block mb-1.5">{t('suffix')}</label><input value={suffixStr} onChange={e => setSuffixStr(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder=", 4k" /></div>
                             </>
                         )}
 
@@ -626,11 +633,11 @@ export const MoveModal = ({
     const availableProjects = projects.filter(p => !isMerge || p.id !== moveState.sourceProjectId);
 
     return (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-200 ease-out">
                 <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
                     <h2 className="text-lg font-bold text-zinc-800 dark:text-zinc-100">{isMerge ? t('mergeTitle') : t('moveTitle')}</h2>
-                    <button onClick={onClose}><X className="w-5 h-5 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300" /></button>
+                    <button onClick={onClose} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"><X className="w-5 h-5 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300" /></button>
                 </div>
 
                 <div className="p-6 space-y-4">
@@ -733,9 +740,9 @@ export const TutorialModal = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-lg w-full shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col relative animate-in fade-in zoom-in-95 duration-300">
-                <button onClick={() => { localStorage.setItem(TUTORIAL_SEEN_KEY, 'true'); onClose(); }} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"><X className="w-5 h-5" /></button>
+        <div className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-lg w-full shadow-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col relative animate-in fade-in zoom-in-95 duration-200 ease-out">
+                <button onClick={() => { localStorage.setItem(TUTORIAL_SEEN_KEY, 'true'); onClose(); }} className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full"><X className="w-5 h-5" /></button>
 
                 <div className="p-8 flex-1 flex flex-col items-center text-center justify-center min-h-[320px]">
                     <div className="mb-6 p-6 bg-zinc-50 dark:bg-zinc-950 rounded-full shadow-inner">{slides[step].icon}</div>

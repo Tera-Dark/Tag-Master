@@ -121,7 +121,12 @@ export const Sidebar = ({
 
                     <div className="space-y-1.5">
                         <div className="flex justify-between text-[10px] uppercase font-bold text-zinc-400"><span>{t('progress')}</span><span>{contextStats.total > 0 ? Math.round((contextStats.completed / contextStats.total) * 100) : 0}%</span></div>
-                        <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-300 ease-out" style={{ width: `${contextStats.total > 0 ? (contextStats.completed / contextStats.total) * 100 : 0}%` }} /></div>
+                        <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                            <div 
+                                className={`h-full transition-all duration-300 ease-out ${isProcessing ? 'bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-shimmer' : 'bg-indigo-500'}`} 
+                                style={{ width: `${contextStats.total > 0 ? (contextStats.completed / contextStats.total) * 100 : 0}%` }} 
+                            />
+                        </div>
                     </div>
 
                     <div className="flex gap-2">
@@ -145,6 +150,7 @@ export const Inspector = ({
     onDownload,
     onRename,
     stats,
+    isProcessing,
     t
 }: {
     activeImage?: TagImage,
@@ -155,6 +161,7 @@ export const Inspector = ({
     onDownload: () => void,
     onRename: (newName: string) => void,
     stats?: { total: number, completed: number, pending: number, error: number, success: number },
+    isProcessing?: boolean,
     t: (key: string) => string
 }) => {
     const [isRenaming, setIsRenaming] = useState(false);
@@ -174,7 +181,7 @@ export const Inspector = ({
     return (
         <div className={`w-80 border-l border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col transition-all duration-300 flex-shrink-0 ${activeImage ? 'translate-x-0' : 'translate-x-full hidden lg:flex lg:translate-x-0'}`}>
             {activeImage ? (
-                <>
+                <div className="flex-grow flex flex-col min-h-0 animate-in fade-in duration-200">
                     <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 font-bold flex flex-col gap-2 shrink-0">
                         <div className="flex justify-between items-center">
                             {isRenaming ? (
@@ -224,7 +231,8 @@ export const Inspector = ({
                                 </button>
                             </div>
                             <textarea
-                                className="w-full h-48 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-zinc-800 dark:text-zinc-200"
+                                id="caption-textarea"
+                                className="w-full h-48 p-3 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none text-zinc-800 dark:text-zinc-200 transition-all duration-200"
                                 value={activeImage.caption}
                                 onChange={(e) => onUpdateCaption(e.target.value)}
                                 placeholder="Caption..."
@@ -235,9 +243,9 @@ export const Inspector = ({
                             </div>
                         </div>
                     </div>
-                </>
+                </div>
             ) : (
-                <div className="flex-1 flex flex-col h-full overflow-y-auto custom-scrollbar p-6 bg-zinc-50/50 dark:bg-zinc-900/50 select-none">
+                <div className="flex-1 flex flex-col h-full overflow-y-auto custom-scrollbar p-6 bg-zinc-50/50 dark:bg-zinc-900/50 select-none animate-in fade-in duration-200">
                     {/* Header */}
                     <div className="pb-4 border-b border-zinc-200 dark:border-zinc-800 mb-6">
                         <h2 className="text-sm font-bold text-zinc-800 dark:text-zinc-100 flex items-center gap-2">
@@ -262,7 +270,7 @@ export const Inspector = ({
                                 </div>
                                 <div className="h-2.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                                     <div 
-                                        className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-500 ease-out" 
+                                        className={`h-full transition-all duration-500 ease-out ${isProcessing ? 'bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-shimmer' : 'bg-gradient-to-r from-indigo-500 to-indigo-600'}`} 
                                         style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }} 
                                     />
                                 </div>

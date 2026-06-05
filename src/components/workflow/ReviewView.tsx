@@ -52,7 +52,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({ projects, onNext }) => {
     }, [projects]);
 
     return (
-        <div className="flex-1 flex flex-col bg-zinc-50 dark:bg-zinc-950 p-6 md:p-12 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 flex flex-col bg-zinc-50 dark:bg-zinc-950 p-6 md:p-12 overflow-y-auto custom-scrollbar animate-in fade-in duration-300 ease-out">
             <div className="max-w-4xl mx-auto w-full space-y-8">
 
                 {/* Header */}

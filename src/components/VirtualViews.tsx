@@ -57,7 +57,7 @@ export const VirtualList = ({
     }, [items, startRow, endRow]);
 
     return (
-        <div ref={containerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar relative outline-none" tabIndex={-1}>
+        <div ref={containerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar relative outline-none animate-in fade-in duration-300 ease-out" tabIndex={-1}>
             <div style={{ height: totalHeight, position: 'relative' }}>
                 <div
                     className="flex flex-col gap-2"
@@ -161,7 +161,7 @@ export const VirtualGrid = ({
     }, [items, startRow, endRow, columnCount]);
 
     return (
-        <div ref={containerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar relative outline-none" tabIndex={-1}>
+        <div ref={containerRef} className="flex-1 overflow-y-auto p-4 custom-scrollbar relative outline-none animate-in fade-in duration-300 ease-out" tabIndex={-1}>
             <div style={{ height: totalHeight, position: 'relative' }}>
                 <div
                     className="grid gap-5"

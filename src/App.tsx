@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { exportAllProjectsToZip, downloadSingleText } from './services/exportService';
 import { WifiOff } from 'lucide-react';
 import { AppSettings, WorkflowStep } from './types';
@@ -234,12 +234,63 @@ const App: React.FC = () => {
         }
     };
 
+    const handleNavigateSelected = useCallback((direction: 'next' | 'prev') => {
+        if (visibleImages.length === 0) return;
+        const currentIndex = visibleImages.findIndex(v => v.img.id === selectedId);
+        let newIndex = 0;
+        if (currentIndex !== -1) {
+            if (direction === 'next') {
+                newIndex = Math.min(visibleImages.length - 1, currentIndex + 1);
+            } else {
+                newIndex = Math.max(0, currentIndex - 1);
+            }
+        }
+        const targetImageId = visibleImages[newIndex].img.id;
+        setSelectedId(targetImageId);
+
+        setTimeout(() => {
+            const cardEl = document.getElementById(`card-${targetImageId}`);
+            if (cardEl) {
+                cardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }, 50);
+    }, [visibleImages, selectedId, setSelectedId]);
+
     // --- Keyboard Shortcuts ---
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            const isEditing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+
+            if (isEditing) {
+                if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+                    e.preventDefault();
+                    const direction = e.key === 'ArrowRight' ? 'next' : 'prev';
+                    handleNavigateSelected(direction);
+
+                    // 自动对新的 textarea 进行聚焦和定位
+                    setTimeout(() => {
+                        const el = document.getElementById('caption-textarea') as HTMLTextAreaElement | null;
+                        if (el) {
+                            el.focus();
+                            const len = el.value.length;
+                            el.setSelectionRange(len, len);
+                        }
+                    }, 80);
+                }
+                return;
+            }
+
             if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); handleSelectAll(); }
             if (e.key === 'Escape') { e.preventDefault(); clearSelection(); }
+
+            // 仅在打标/校对阶段支持直接用方向键在网格卡片间切换图片
+            if (currentStep === WorkflowStep.TAGGING || currentStep === WorkflowStep.REVIEW) {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    const direction = e.key === 'ArrowRight' ? 'next' : 'prev';
+                    handleNavigateSelected(direction);
+                }
+            }
 
             // Only allow delete in Tagging/Review steps?
             if (currentStep === WorkflowStep.TAGGING || currentStep === WorkflowStep.PREPROCESS || currentStep === WorkflowStep.REVIEW) {
@@ -260,7 +311,7 @@ const App: React.FC = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [handleSelectAll, clearSelection, multiSelection, selectedId, setSelectedId, removeImages, t, currentStep]);
+    }, [handleSelectAll, clearSelection, multiSelection, selectedId, setSelectedId, removeImages, t, currentStep, handleNavigateSelected]);
 
     // --- Handlers ---
     // handleDrop is already provided by useFileHandler hook
@@ -453,6 +504,7 @@ const App: React.FC = () => {
                                             onRegen={() => inspectorProjectId && activeImage && processSingle(inspectorProjectId, activeImage.id)}
                                             onDownload={() => activeImage && downloadSingleText(activeImage)}
                                             stats={contextStats}
+                                            isProcessing={isProcessing}
                                             t={t}
                                         />
                                     )}

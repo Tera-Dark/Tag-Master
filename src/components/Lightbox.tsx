@@ -100,7 +100,7 @@ export const Lightbox: React.FC<LightboxProps> = ({
                 <img
                     src={image.previewUrl}
                     alt={image.file.name}
-                    className="max-w-full max-h-full object-contain transition-transform duration-75"
+                    className="max-w-full max-h-full object-contain transition-transform duration-75 animate-in zoom-in-95 duration-200 ease-out"
                     style={{
                         transform: `scale(${scale}) translate(${position.x / scale}px, ${position.y / scale}px)`,
                         cursor: scale > 1 ? 'grab' : 'default'

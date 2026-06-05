@@ -60,8 +60,8 @@ export const CleanModal: React.FC<CleanModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 dark:bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200 ease-out">
                 <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-950">
                     <h3 className="font-bold text-lg flex items-center gap-2 text-zinc-800 dark:text-zinc-100">
                         <AlertTriangle className="w-5 h-5 text-amber-500" />
@@ -133,10 +133,16 @@ export const CleanModal: React.FC<CleanModalProps> = ({
                             value={testInput}
                             onChange={e => setTestInput(e.target.value)}
                         />
-                        <div className="flex items-center gap-2 text-sm font-mono text-emerald-400">
-                            <span className="text-zinc-500 select-none">{t('result')}:</span>
-                            <span className="break-all">{getPreview(testInput)}</span>
-                        </div>
+                        {(() => {
+                            const previewResult = getPreview(testInput);
+                            const hasChanged = previewResult !== testInput;
+                            return (
+                                <div className={`flex items-start gap-2 text-sm font-mono transition-all duration-300 ${hasChanged ? 'text-emerald-400 font-bold' : 'text-zinc-500'}`}>
+                                    <span className="text-zinc-500 select-none shrink-0">{t('result')}:</span>
+                                    <span className="break-all">{previewResult}</span>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
 

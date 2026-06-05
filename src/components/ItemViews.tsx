@@ -51,7 +51,11 @@ export const ImageCard = React.memo(({
                 ? 'border-indigo-500 ring-2 ring-indigo-500/50 shadow-lg shadow-indigo-500/20 z-10 scale-[1.02]'
                 : isMultiSelected
                     ? 'border-indigo-400/50 bg-indigo-50/10 ring-1 ring-indigo-400/30'
-                    : 'border-zinc-200 dark:border-zinc-800 hover:border-indigo-300 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900 hover:-translate-y-1 hover:scale-[1.015] hover:shadow-lg hover:shadow-indigo-500/5'
+                    : img.status === 'loading'
+                        ? 'border-indigo-400/60 dark:border-indigo-800/60 bg-indigo-500/5 dark:bg-indigo-500/5 animate-pulse shadow-inner'
+                        : img.status === 'error'
+                            ? 'border-rose-300 dark:border-rose-900/60 bg-rose-500/5 dark:bg-rose-500/5 hover:border-rose-400 dark:hover:border-rose-800'
+                            : 'border-zinc-200 dark:border-zinc-800 hover:border-indigo-300 dark:hover:border-zinc-600 bg-white dark:bg-zinc-900 hover:-translate-y-1 hover:scale-[1.015] hover:shadow-lg hover:shadow-indigo-500/5'
                 }`}
         >
             {/* Image */}
@@ -70,9 +74,9 @@ export const ImageCard = React.memo(({
 
             {/* Status Indicator */}
             <div className="absolute top-2 right-2 z-20 flex flex-col gap-1 pointer-events-none">
-                {img.status === 'success' && <div className="bg-emerald-500 text-white p-1 rounded-full shadow-lg animate-in zoom-in"><CheckCircle className="w-3.5 h-3.5" /></div>}
-                {img.status === 'loading' && <div className="bg-indigo-600 text-white p-1 rounded-full shadow-lg"><Loader2 className="w-3.5 h-3.5 animate-spin" /></div>}
-                {img.status === 'error' && <div className="bg-red-500 text-white p-1 rounded-full shadow-lg animate-pulse"><AlertCircle className="w-3.5 h-3.5" /></div>}
+                {img.status === 'success' && <div className="bg-emerald-500/80 backdrop-blur-sm text-white p-1 rounded-full shadow-md animate-in zoom-in ring-2 ring-white dark:ring-zinc-900"><CheckCircle className="w-3.5 h-3.5" /></div>}
+                {img.status === 'loading' && <div className="bg-indigo-600/80 backdrop-blur-sm text-white p-1 rounded-full shadow-md ring-2 ring-white dark:ring-zinc-900"><Loader2 className="w-3.5 h-3.5 animate-spin" /></div>}
+                {img.status === 'error' && <div className="bg-rose-500/80 backdrop-blur-sm text-white p-1 rounded-full shadow-md ring-2 ring-white dark:ring-zinc-900 animate-pulse"><AlertCircle className="w-3.5 h-3.5" /></div>}
             </div>
 
             {/* Caption Overlay */}
@@ -114,7 +118,11 @@ export const ListItem = React.memo(({
                 ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20 ring-1 ring-indigo-500/30 z-10'
                 : isMultiSelected
                     ? 'border-indigo-300 bg-indigo-50/30 dark:border-indigo-800 dark:bg-indigo-900/10'
-                    : 'border-transparent bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700'
+                    : img.status === 'loading'
+                        ? 'border-indigo-400 bg-indigo-50/10 dark:border-indigo-900/10 dark:border-indigo-800/40 animate-pulse'
+                        : img.status === 'error'
+                            ? 'border-rose-300 bg-rose-50/10 dark:border-rose-900/20 dark:border-rose-800/40 hover:border-rose-400'
+                            : 'border-transparent bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700'
                 }`}
         >
             {/* Checkbox */}
