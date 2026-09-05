@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#4338ca" />
+    </linearGradient>
+    <linearGradient id="tagGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#e0e7ff" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded App Icon Background -->
+  <rect width="512" height="512" rx="128" fill="url(#bg)" />
+  
+  <!-- Stylized Tag Shape -->
+  <path d="M160 128h110c17 0 33 7 45 19l153 153c25 25 25 65 0 90l-74 74c-25 25-65 25-90 0L151 311c-12-12-19-28-19-45V160c0-18 14-32 32-32z" 
+        fill="url(#tagGlow)" />
+  <!-- Tag Hole -->
+  <circle cx="210" cy="210" r="32" fill="#4338ca" />
+  
+  <!-- AI Sparkle Icon inside tag -->
+  <path d="M330 330l12-30 12 30 30 12-30 12-12 30-12-30-30-12 30-12z" fill="#6366f1" opacity="0.9" />
+</svg>

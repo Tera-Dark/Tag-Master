@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { exportAllProjectsToZip, downloadSingleText } from './services/exportService';
 import { WifiOff } from 'lucide-react';
-import { AppSettings, WorkflowStep } from './types';
+import { AppSettings, WorkflowStep, Project } from './types';
 import { Upload, FolderInput } from './components/Icons';
 
 // Hooks
@@ -14,7 +14,7 @@ import { useSearch } from './hooks/useSearch';
 
 // Components
 import { VirtualList, VirtualGrid } from './components/VirtualViews';
-import { SettingsModal, BatchEditModal, MoveModal, TutorialModal, ExportModal, CleanModal } from './components/AppModals';
+import { SettingsModal, BatchEditModal, MoveModal, TutorialModal, ExportModal, CleanModal, CreateProjectModal, EditProjectModal, DeleteProjectModal } from './components/AppModals';
 import { ToastContainer, ToastMessage, ToastType } from './components/Toast';
 import { testConnection } from './services/geminiService';
 
@@ -33,7 +33,7 @@ const App: React.FC = () => {
     // --- Custom Hooks ---
     const { settings, setSettings, t } = useSettings();
     const {
-        projects, addFilesToProject, deleteProject, removeImages, renameImage,
+        projects, addFilesToProject, createProject, renameProject, deleteProject, removeImages, renameImage,
         updateImageCaption, updateImageStatus, batchUpdateCaptions, moveImages, mergeProjects,
         retryErrors,
         clearDone,
@@ -57,6 +57,9 @@ const App: React.FC = () => {
     const [isCleanModalOpen, setIsCleanModalOpen] = useState(false);
     const [isTutorialOpen, setIsTutorialOpen] = useState(false);
     const [isBatchOpen, setIsBatchOpen] = useState(false);
+    const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
+    const [editProjectTarget, setEditProjectTarget] = useState<Project | null>(null);
+    const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null);
     const [isOffline, setIsOffline] = useState(!navigator.onLine);
     const [isInspectorOpen, setIsInspectorOpen] = useState(true);
 
@@ -88,7 +91,15 @@ const App: React.FC = () => {
     };
 
     // --- Logic Hooks ---
-    const { isProcessing, startBatch, pause, processSingle } = useTagProcessor(projects, settings, updateImageStatus, addToast);
+    const {
+        isProcessing,
+        isCooling,
+        coolingCountdown,
+        skipCooldown,
+        startBatch,
+        pause,
+        processSingle
+    } = useTagProcessor(projects, settings, updateImageStatus, addToast);
 
     const handleExport = async (format: 'txt' | 'json') => {
         try {
@@ -108,24 +119,6 @@ const App: React.FC = () => {
     // Check Tutorial
     useEffect(() => { if (!localStorage.getItem(TUTORIAL_SEEN_KEY)) setIsTutorialOpen(true); }, []);
 
-    // Responsive Grid
-    useEffect(() => {
-        const handleResize = () => {
-            const w = window.innerWidth;
-            let cols = 5;
-            if (w >= 1536) cols = 6;
-            else if (w >= 1280) cols = 5;
-            else if (w >= 1024) cols = 4;
-            else if (w >= 768) cols = 3;
-            else cols = 2;
-
-            setSettings(prev => ({ ...prev, gridColumns: cols }));
-        };
-        window.addEventListener('resize', handleResize);
-        handleResize();
-
-        return () => window.removeEventListener('resize', handleResize);
-    }, [setSettings]);
 
     // Check API Configuration on mount
     useEffect(() => {
@@ -371,7 +364,7 @@ const App: React.FC = () => {
 
     return (
         <div
-            className={`h-screen w-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-200 ${settings.theme === 'dark' ? 'dark' : ''}`}
+            className={`h-screen w-screen flex flex-col bg-white dark:bg-[#212121] text-zinc-900 dark:text-zinc-100 transition-colors duration-200 ${settings.theme === 'dark' ? 'dark' : ''}`}
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
         >
@@ -380,23 +373,53 @@ const App: React.FC = () => {
 
             {/* Offline Banner */}
             {isOffline && (
-                <div className="bg-amber-500/10 text-amber-600 dark:text-amber-500 text-sm font-medium py-1.5 px-4 flex items-center justify-center gap-2 border-b border-amber-500/20">
-                    <WifiOff size={16} />
+                <div className="bg-amber-500/10 text-amber-600 dark:text-amber-500 text-xs font-medium py-1.5 px-4 flex items-center justify-center gap-2 border-b border-amber-500/20">
+                    <WifiOff size={14} />
                     <span>{t('offlineWarning') || 'You are currently offline. Local features are still available, but AI generation is disabled.'}</span>
                 </div>
             )}
 
+            {/* Rate Limit Cooldown Notification Banner */}
+            {isCooling && (
+                <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/15 to-amber-500/10 border-b border-amber-500/20 text-amber-700 dark:text-amber-300 px-4 py-2 flex items-center justify-between text-xs backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-center gap-2 font-medium">
+                        <span className="flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                        </span>
+                        <span>⚠️ 触发 API 速率限制 (5 RPM 或 Token 配额耗尽)，正在自动排队轮询恢复中...</span>
+                        <span className="font-mono font-bold bg-amber-500/20 px-2 py-0.5 rounded-full text-amber-800 dark:text-amber-200">
+                            {coolingCountdown}s 后自动继续
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={skipCooldown}
+                            className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-800 dark:text-amber-200 text-xs font-semibold transition-all cursor-pointer"
+                        >
+                            跳过等待立即重试
+                        </button>
+                        <button
+                            onClick={pause}
+                            className="px-2.5 py-1 rounded-lg bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.1] text-zinc-700 dark:text-zinc-300 text-xs font-semibold transition-all cursor-pointer"
+                        >
+                            暂停批处理
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="flex-1 flex overflow-hidden">
-                {/* Sidebar - Always visible for Project Navigation, but maybe context sensitive? 
-                    Let's keep it for IMPORT state mostly, but useful for NAV. 
-                    Actually, in 'Preprocess' mode, do we want to switch projects? Yes.
-                */}
+                {/* Sidebar */}
                 <Sidebar
                     projects={projects}
                     activeProjectId={activeProjectId}
                     setActiveProjectId={setActiveProjectId}
                     settings={settings}
                     isProcessing={isProcessing}
+                    isCooling={isCooling}
+                    coolingCountdown={coolingCountdown}
+                    onSkipCooldown={skipCooldown}
                     contextStats={contextStats}
                     fileInputRef={fileInputRef}
                     t={t}
@@ -404,7 +427,26 @@ const App: React.FC = () => {
                         onImport: openFileDialog,
                         onExport: () => setIsExportModalOpen(true),
                         onMerge: (sourceId) => setMoveState({ isOpen: true, mode: 'project', sourceProjectId: sourceId }),
-                        onDeleteProject: (id) => { if (confirm(t('deleteProjectConfirm'))) { deleteProject(id); if (activeProjectId === id) setActiveProjectId('all'); } },
+                        onDeleteProject: (id) => {
+                            const p = projects.find(item => item.id === id);
+                            if (p) setDeleteProjectTarget(p);
+                        },
+                        onDeleteProjectRequest: (p) => setDeleteProjectTarget(p),
+                        onCreateProject: () => setIsCreateProjectOpen(true),
+                        onRenameProject: (id, newName) => {
+                            renameProject(id, newName);
+                            addToast('项目已重命名', 'success');
+                        },
+                        onEditProject: (p) => setEditProjectTarget(p),
+                        onExportProject: async (p) => {
+                            try {
+                                await exportAllProjectsToZip([p], 'txt');
+                                addToast(`项目「${p.name}」已成功导出`, 'success');
+                            } catch (e) {
+                                console.error(e);
+                                addToast('导出失败，请重试', 'error');
+                            }
+                        },
                         onStartAll: () => startBatch(activeProjectId, () => setIsSettingsOpen(true)),
                         onPause: pause,
                         onOpenSettings: () => setIsSettingsOpen(true),
@@ -455,7 +497,7 @@ const App: React.FC = () => {
                                     setSettings={setSettings}
                                 />
 
-                                <div className="flex-1 flex min-w-0 relative overflow-hidden">
+                                <div className="flex-1 flex min-w-0 relative overflow-hidden bg-white dark:bg-[#212121]">
                                     <div
                                         className="flex-1 flex flex-col min-w-0 relative"
                                         onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
@@ -463,13 +505,16 @@ const App: React.FC = () => {
                                         <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileInputChange} />
 
                                         {visibleImages.length === 0 ? (
-                                            <div className="flex-1 flex flex-col items-center justify-center text-zinc-400">
-                                                <div className="w-24 h-24 bg-zinc-100 dark:bg-zinc-900 rounded-full flex items-center justify-center mb-4">
-                                                    <FolderInput className="w-10 h-10 opacity-50" />
+                                            <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 p-6 select-none">
+                                                <div className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-3">
+                                                    <FolderInput className="w-6 h-6 opacity-40" />
                                                 </div>
-                                                <p className="text-lg font-medium">{t('workspaceEmpty')}</p>
-                                                <p className="text-sm opacity-50 mt-2 max-w-xs text-center">{t('dropHere')}</p>
-                                                <button onClick={openFileDialog} className="mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full text-sm font-bold shadow-lg shadow-indigo-500/20 transition-transform hover:scale-105 active:scale-95">
+                                                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('workspaceEmpty')}</p>
+                                                <p className="text-xs text-zinc-400 mt-1 max-w-xs text-center">{t('dropHere')}</p>
+                                                <button 
+                                                    onClick={openFileDialog} 
+                                                    className="mt-4 px-4 py-2 bg-[#0d0d0d] dark:bg-white text-white dark:text-[#0d0d0d] rounded-full text-xs font-medium hover:opacity-90 transition-all active:scale-95 shadow-2xs"
+                                                >
                                                     {t('browseFiles')}
                                                 </button>
                                             </div>
@@ -494,10 +539,10 @@ const App: React.FC = () => {
 
                                         {/* Drag Overlay */}
                                         {isDragOver && (
-                                            <div className="absolute inset-0 bg-indigo-500/10 backdrop-blur-sm z-50 flex items-center justify-center border-2 border-indigo-500 border-dashed m-4 rounded-2xl animate-in fade-in">
-                                                <div className="bg-white dark:bg-zinc-900 p-8 rounded-2xl shadow-2xl flex flex-col items-center animate-bounce">
-                                                    <Upload className="w-12 h-12 text-indigo-600 mb-4" />
-                                                    <h3 className="text-xl font-bold text-zinc-800 dark:text-zinc-100">{t('import')}</h3>
+                                            <div className="absolute inset-0 bg-black/[0.03] dark:bg-white/[0.04] backdrop-blur-xs z-50 flex items-center justify-center border-2 border-dashed border-zinc-400 dark:border-zinc-600 m-3 rounded-2xl animate-in fade-in">
+                                                <div className="bg-white dark:bg-[#212121] p-6 rounded-2xl shadow-xl flex flex-col items-center border border-black/[0.06] dark:border-white/[0.08]">
+                                                    <Upload className="w-8 h-8 text-zinc-700 dark:text-zinc-300 mb-2" />
+                                                    <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">{t('import')}</h3>
                                                 </div>
                                             </div>
                                         )}
@@ -541,6 +586,36 @@ const App: React.FC = () => {
 
                 <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} settings={settings} setSettings={setSettings} t={t} onTestConnection={handleTestConnection} />
                 <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} onExport={handleExport} t={t} />
+                <CreateProjectModal
+                    isOpen={isCreateProjectOpen}
+                    onClose={() => setIsCreateProjectOpen(false)}
+                    onCreate={(name, triggerWord) => {
+                        const newId = createProject(name, triggerWord);
+                        setActiveProjectId(newId);
+                        addToast(`项目「${name}」已成功创建`, 'success');
+                    }}
+                    defaultIndex={projects.length + 1}
+                />
+                <EditProjectModal
+                    isOpen={!!editProjectTarget}
+                    onClose={() => setEditProjectTarget(null)}
+                    project={editProjectTarget}
+                    onSave={(id, name, triggerWord) => {
+                        renameProject(id, name);
+                        updateProjectTriggerWord(id, triggerWord);
+                        addToast('项目信息已更新', 'success');
+                    }}
+                />
+                <DeleteProjectModal
+                    isOpen={!!deleteProjectTarget}
+                    onClose={() => setDeleteProjectTarget(null)}
+                    project={deleteProjectTarget}
+                    onConfirm={(id) => {
+                        deleteProject(id);
+                        if (activeProjectId === id) setActiveProjectId('all');
+                        addToast('项目已成功删除', 'info');
+                    }}
+                />
                 {/* --- Modals --- */}
                 <CleanModal
                     isOpen={isCleanModalOpen}

@@ -105,6 +105,26 @@ export const useProjectManager = () => {
         }
     }, []);
 
+    const createProject = useCallback((name?: string, triggerWord?: string) => {
+        const newProjectId = crypto.randomUUID();
+        const newProject: Project = {
+            id: newProjectId,
+            name: name?.trim() || `Project ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            triggerWord: triggerWord?.trim() || '',
+            images: [],
+            status: 'idle',
+            isCollapsed: false
+        };
+        setProjects(prev => [...prev, newProject]);
+        return newProjectId;
+    }, []);
+
+    const renameProject = useCallback((projectId: string, newName: string) => {
+        const trimmed = newName.trim();
+        if (!trimmed) return;
+        setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name: trimmed } : p));
+    }, []);
+
     const deleteProject = useCallback((id: string) => {
         setProjects(prev => {
             const projectToDelete = prev.find(p => p.id === id);
@@ -344,6 +364,8 @@ export const useProjectManager = () => {
         isLoaded,
         saveStatus,
         addFilesToProject,
+        createProject,
+        renameProject,
         deleteProject,
         removeImages,
         renameImage,

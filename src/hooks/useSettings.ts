@@ -1,89 +1,219 @@
 import { useState, useEffect } from 'react';
-import { AppSettings, DEFAULT_PROMPT } from '../types';
+import { AppSettings, DEFAULT_PROMPT, AiProvider } from '../types';
 import { useTranslation } from 'react-i18next';
 
-const STORAGE_KEY = 'lora-tag-master-settings-v8';
+const STORAGE_KEY = 'lora-tag-master-settings-v9';
+
+const DEFAULT_PROVIDERS: AiProvider[] = [
+  {
+    id: 'google-default',
+    name: 'Google Gemini (官方)',
+    protocol: 'google',
+    baseUrl: 'https://generativelanguage.googleapis.com',
+    apiKey: '',
+    avatar: 'G',
+    models: [
+      {
+        id: 'gemini-2.0-flash',
+        name: 'Gemini 2.0 Flash',
+        capabilities: ['vision', 'text', 'audio', 'video', 'tools'],
+        group: 'gemini'
+      },
+      {
+        id: 'gemini-2.5-flash',
+        name: 'Gemini 2.5 Flash',
+        capabilities: ['vision', 'text', 'audio', 'video', 'tools'],
+        group: 'gemini'
+      },
+      {
+        id: 'gemini-2.5-pro',
+        name: 'Gemini 2.5 Pro',
+        capabilities: ['vision', 'text', 'audio', 'video', 'tools', 'reasoning'],
+        group: 'gemini'
+      },
+      {
+        id: 'gemini-1.5-flash',
+        name: 'Gemini 1.5 Flash',
+        capabilities: ['vision', 'text', 'audio', 'video', 'tools'],
+        group: 'gemini'
+      }
+    ]
+  },
+  {
+    id: 'openai-default',
+    name: 'OpenAI (官方/兼容)',
+    protocol: 'openai_compatible',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: '',
+    avatar: 'O',
+    models: [
+      {
+        id: 'gpt-4o',
+        name: 'GPT-4o (Omni)',
+        capabilities: ['vision', 'text', 'audio', 'tools'],
+        group: 'openai'
+      },
+      {
+        id: 'gpt-4o-mini',
+        name: 'GPT-4o mini',
+        capabilities: ['vision', 'text', 'tools'],
+        group: 'openai'
+      },
+      {
+        id: 'o1',
+        name: 'OpenAI o1',
+        capabilities: ['vision', 'text', 'reasoning', 'tools'],
+        group: 'openai'
+      }
+    ]
+  },
+  {
+    id: 'siliconflow-default',
+    name: 'SiliconFlow (硅基流动)',
+    protocol: 'openai_compatible',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    apiKey: '',
+    avatar: '硅',
+    models: [
+      {
+        id: 'Qwen/Qwen2.5-VL-72B-Instruct',
+        name: 'Qwen2.5-VL 72B (推荐视觉)',
+        capabilities: ['vision', 'text', 'tools'],
+        group: 'qwen'
+      },
+      {
+        id: 'Qwen/Qwen2.5-VL-7B-Instruct',
+        name: 'Qwen2.5-VL 7B',
+        capabilities: ['vision', 'text', 'tools'],
+        group: 'qwen'
+      },
+      {
+        id: 'deepseek-ai/DeepSeek-R1',
+        name: 'DeepSeek-R1 (深度推理)',
+        capabilities: ['text', 'reasoning'],
+        group: 'deepseek'
+      }
+    ]
+  }
+];
 
 const DEFAULT_SETTINGS: AppSettings = {
-    language: 'zh',
-    theme: 'dark',
-    viewMode: 'grid',
-    protocol: 'google',
-    providerName: 'Official Gemini',
-    apiKey: '',
-    baseUrl: 'https://api.openai.com',
-    model: 'gemini-2.5-flash',
-    activePrompt: DEFAULT_PROMPT,
-    concurrency: 3,
-    customTemplates: [],
-    gridColumns: 5,
-    blockedWords: ['username', 'text logo', 'watermark', 'date', 'signature'],
-    replacementRules: []
+  language: 'zh',
+  theme: 'dark',
+  viewMode: 'grid',
+  protocol: 'google',
+  providerName: 'Google Gemini (官方)',
+  apiKey: '',
+  baseUrl: 'https://api.openai.com/v1',
+  model: 'gemini-2.0-flash',
+  activePrompt: DEFAULT_PROMPT,
+  concurrency: 3,
+  customTemplates: [],
+  gridColumns: 5,
+  blockedWords: ['username', 'text logo', 'watermark', 'date', 'signature'],
+  replacementRules: [],
+  providers: DEFAULT_PROVIDERS,
+  activeProviderId: 'google-default',
+  rateLimitPreset: 'unlimited',
+  requestIntervalSec: 12
+};
+
+const clampColumns = (cols?: number): number => {
+  if (typeof cols !== 'number' || isNaN(cols)) return 5;
+  if (cols < 3) return 3;
+  if (cols > 8) return 8;
+  return cols;
+};
+
+// Helper to resolve active prompt and auto-upgrade legacy prompts
+const resolveActivePrompt = (parsedPrompt?: string): string => {
+  if (!parsedPrompt) return DEFAULT_PROMPT;
+  // Auto-upgrade legacy v1 prompts to Visual Prompt Compiler v2.0 Mode D
+  if (
+    parsedPrompt.includes('Analyze this image for a LoRA training dataset. Provide a hybrid description') ||
+    parsedPrompt.includes('default-danbooru') ||
+    parsedPrompt.includes('default-caption') ||
+    parsedPrompt.includes('default-optimal')
+  ) {
+    return DEFAULT_PROMPT;
+  }
+  return parsedPrompt;
 };
 
 export const useSettings = () => {
-    const [settings, setSettings] = useState<AppSettings>(() => {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            // 1. Try Legacy (Plain JSON)
-            try {
-                const parsed = JSON.parse(saved);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                    // It's valid JSON object, assume legacy format.
-                    // This will be automatically converted to Base64 on next save (useEffect).
-                    return { ...DEFAULT_SETTINGS, ...parsed };
-                }
-            } catch (e) {
-                // Not plain JSON, continue to Base64
-            }
-
-            // 2. Try New (Base64)
-            try {
-                // Unicode-safe decoding
-                const binaryString = window.atob(saved);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                const decoded = new TextDecoder().decode(bytes);
-
-                const parsed = JSON.parse(decoded);
-                return { ...DEFAULT_SETTINGS, ...parsed };
-            } catch (e) {
-                console.warn("Failed to load settings (corruption or format mismatch)", e);
-            }
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('lora-tag-master-settings-v8');
+    if (saved) {
+      // 1. Try Legacy (Plain JSON)
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const mergedProviders = parsed.providers?.length ? parsed.providers : DEFAULT_PROVIDERS;
+          return {
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            activePrompt: resolveActivePrompt(parsed.activePrompt),
+            gridColumns: clampColumns(parsed.gridColumns),
+            providers: mergedProviders,
+            activeProviderId: parsed.activeProviderId || mergedProviders[0].id
+          };
         }
-        return DEFAULT_SETTINGS;
-    });
+      } catch {
+        // Not plain JSON, continue to Base64
+      }
 
-    // Persist settings (Obfuscated)
-    useEffect(() => {
-        try {
-            const json = JSON.stringify(settings);
-            // Unicode-safe encoding
-            const bytes = new TextEncoder().encode(json);
-            const binaryString = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
-            const encoded = window.btoa(binaryString);
-
-            localStorage.setItem(STORAGE_KEY, encoded);
-        } catch (e) {
-            console.error("Failed to save settings", e);
+      // 2. Try New (Base64)
+      try {
+        const binaryString = window.atob(saved);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
         }
-    }, [settings]);
+        const decoded = new TextDecoder().decode(bytes);
+        const parsed = JSON.parse(decoded);
+        const mergedProviders = parsed.providers?.length ? parsed.providers : DEFAULT_PROVIDERS;
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          activePrompt: resolveActivePrompt(parsed.activePrompt),
+          gridColumns: clampColumns(parsed.gridColumns),
+          providers: mergedProviders,
+          activeProviderId: parsed.activeProviderId || mergedProviders[0].id
+        };
+      } catch (e) {
+        console.warn('Failed to load settings (corruption or format mismatch)', e);
+      }
+    }
+    return DEFAULT_SETTINGS;
+  });
 
-    // Apply theme
-    useEffect(() => {
-        document.documentElement.classList.toggle('dark', settings.theme === 'dark');
-    }, [settings.theme]);
+  // Persist settings (Obfuscated)
+  useEffect(() => {
+    try {
+      const json = JSON.stringify(settings);
+      const bytes = new TextEncoder().encode(json);
+      const binaryString = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
+      const encoded = window.btoa(binaryString);
 
-    const { t, i18n } = useTranslation();
+      localStorage.setItem(STORAGE_KEY, encoded);
+    } catch (e) {
+      console.error('Failed to save settings', e);
+    }
+  }, [settings]);
 
-    // Sync language state to i18n
-    useEffect(() => {
-        if (settings.language && i18n.language !== settings.language) {
-            i18n.changeLanguage(settings.language);
-        }
-    }, [settings.language, i18n]);
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', settings.theme === 'dark');
+  }, [settings.theme]);
 
-    return { settings, setSettings, t };
+  const { t, i18n } = useTranslation();
+
+  // Sync language state to i18n
+  useEffect(() => {
+    if (settings.language && i18n.language !== settings.language) {
+      i18n.changeLanguage(settings.language);
+    }
+  }, [settings.language, i18n]);
+
+  return { settings, setSettings, t };
 };

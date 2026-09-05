@@ -134,23 +134,23 @@ export const CleanModal: React.FC<CleanModalProps> = ({
 
                             <div className="grid grid-cols-1 gap-3">
                                 {presets.map((preset) => (
-                                    <div key={preset.op} className="p-3 bg-zinc-50 dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 flex flex-col gap-2 group hover:border-indigo-500/30 transition-all">
+                                    <div key={preset.op} className="p-3.5 bg-zinc-50 dark:bg-zinc-950 rounded-xl border border-zinc-200 dark:border-zinc-800 flex flex-col gap-2 group hover:border-indigo-500/30 transition-all">
                                         <div>
-                                            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-200">{preset.label}</span>
-                                            <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5 leading-normal">{preset.desc}</p>
+                                            <span className="text-sm font-bold text-zinc-800 dark:text-zinc-200">{preset.label}</span>
+                                            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5 leading-normal">{preset.desc}</p>
                                         </div>
                                         <div className="flex gap-2 mt-1">
                                             {selectedCount > 0 && (
                                                 <button
                                                     onClick={() => handlePresetClean('selected', preset.op, preset.label)}
-                                                    className="flex-1 py-1 px-2.5 text-[10px] bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-950/40 transition-all font-bold"
+                                                    className="flex-1 py-1.5 px-3 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/20 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-950/40 transition-all font-bold"
                                                 >
                                                     {isZh ? `已选 (${selectedCount})` : `Selected (${selectedCount})`}
                                                 </button>
                                             )}
                                             <button
                                                 onClick={() => handlePresetClean('all', preset.op, preset.label)}
-                                                className="flex-1 py-1 px-2.5 text-[10px] bg-zinc-100 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-850 dark:hover:bg-zinc-800 dark:text-zinc-350 rounded-lg border border-zinc-200 dark:border-zinc-800 transition-all font-bold"
+                                                className="flex-1 py-1.5 px-3 text-xs bg-zinc-100 hover:bg-zinc-200 text-zinc-700 dark:bg-zinc-850 dark:hover:bg-zinc-800 dark:text-zinc-350 rounded-lg border border-zinc-200 dark:border-zinc-800 transition-all font-bold"
                                             >
                                                 {isZh ? `全部 (${visibleCount})` : `All (${visibleCount})`}
                                             </button>
@@ -162,7 +162,7 @@ export const CleanModal: React.FC<CleanModalProps> = ({
 
                         {/* Right Column: Custom Regex Rules */}
                         <div className="space-y-4">
-                            <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <h4 className="text-sm font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
                                 {isZh ? '自定义正则查找替换规则' : 'Custom Regex Replacement Rules'}
                             </h4>
@@ -171,18 +171,18 @@ export const CleanModal: React.FC<CleanModalProps> = ({
                                 {/* Add New Rule */}
                                 <div className="flex gap-2 items-end">
                                     <div className="flex-1 space-y-1">
-                                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{t('pattern')}</label>
+                                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{t('pattern')}</label>
                                         <input
-                                            className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                            className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3.5 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                                             placeholder="e.g. \b(girl)\b"
                                             value={newPattern}
                                             onChange={e => setNewPattern(e.target.value)}
                                         />
                                     </div>
                                     <div className="flex-1 space-y-1">
-                                        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{t('replaceWith')}</label>
+                                        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{t('replaceWith')}</label>
                                         <input
-                                            className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                                            className="w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3.5 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                                             placeholder="e.g. 1girl"
                                             value={newReplace}
                                             onChange={e => setNewReplace(e.target.value)}
@@ -191,28 +191,28 @@ export const CleanModal: React.FC<CleanModalProps> = ({
                                     <button
                                         onClick={addRule}
                                         disabled={!newPattern.trim()}
-                                        className="px-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs disabled:opacity-50 transition-all hover:scale-105 active:scale-95 h-[32px] flex items-center gap-1 shadow-sm"
+                                        className="px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm disabled:opacity-50 transition-all hover:scale-105 active:scale-95 h-[38px] flex items-center gap-1 shadow-sm"
                                     >
-                                        <Plus className="w-3.5 h-3.5" /> {t('add')}
+                                        <Plus className="w-4 h-4" /> {t('add')}
                                     </button>
                                 </div>
 
                                 {/* Rules List */}
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{t('activeRules')}</label>
+                                    <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{t('activeRules')}</label>
                                     {(!settings.replacementRules || settings.replacementRules.length === 0) && (
-                                        <div className="text-center py-6 text-zinc-400 text-xs italic border-2 border-dashed border-zinc-100 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/50">
+                                        <div className="text-center py-6 text-zinc-400 text-sm italic border-2 border-dashed border-zinc-100 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/50">
                                             {t('noRules')}
                                         </div>
                                     )}
                                     <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar pr-1">
                                         {settings.replacementRules?.map((rule, idx) => (
-                                            <div key={idx} className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-2 rounded-lg border border-zinc-200 dark:border-zinc-800 group transition-all">
-                                                <div className="font-mono text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded border border-amber-100 dark:border-amber-900/30 flex-1 truncate select-all" title={rule.pattern}>{rule.pattern}</div>
-                                                <div className="text-zinc-400 text-xs">→</div>
-                                                <div className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded border border-emerald-100 dark:border-emerald-900/30 flex-1 truncate select-all" title={rule.replace}>{rule.replace || '<empty>'}</div>
-                                                <button onClick={() => removeRule(idx)} className="text-zinc-400 hover:text-red-500 transition-colors bg-zinc-50 dark:bg-zinc-850 p-1 rounded-md border border-zinc-200 dark:border-zinc-750 opacity-0 group-hover:opacity-100 focus:opacity-100">
-                                                    <Trash2 className="w-3.5 h-3.5" />
+                                            <div key={idx} className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-800 group transition-all">
+                                                <div className="font-mono text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded border border-amber-100 dark:border-amber-900/30 flex-1 truncate select-all" title={rule.pattern}>{rule.pattern}</div>
+                                                <div className="text-zinc-400 text-sm">→</div>
+                                                <div className="font-mono text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded border border-emerald-100 dark:border-emerald-900/30 flex-1 truncate select-all" title={rule.replace}>{rule.replace || '<empty>'}</div>
+                                                <button onClick={() => removeRule(idx)} className="text-zinc-400 hover:text-red-500 transition-colors bg-zinc-50 dark:bg-zinc-850 p-1.5 rounded-md border border-zinc-200 dark:border-zinc-750 opacity-0 group-hover:opacity-100 focus:opacity-100">
+                                                    <Trash2 className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         ))}

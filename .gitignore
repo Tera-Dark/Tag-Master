@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test & build temporary artifacts
+lint_*.txt
+lint_*.json
+build_*.txt
+tsc_*.txt
+

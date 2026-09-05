@@ -1,106 +1,97 @@
 
 import { AppSettings } from "../types";
+import { processImage } from "./imageProcessor";
+import { smartFetch } from "./networkUtils";
 
-// Smart network layer: automatic fallback to local Vite dynamic proxy when direct call fails due to CORS or network errors
-const smartFetch = async (url: string, options: RequestInit): Promise<Response> => {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s quick timeout for direct connection detection
-    const res = await fetch(url, {
-      ...options,
-      signal: options.signal || controller.signal
-    });
-    clearTimeout(timeoutId);
-    return res;
-  } catch (err: unknown) {
-    const error = err as Error;
-    const isNetworkOrCorsError = error.name === 'TypeError' && error.message.includes('Failed to fetch');
-    const isTimeout = error.name === 'AbortError';
+export class RateLimitError extends Error {
+  retryAfterSec: number;
+  isRateLimit = true;
 
-    const isDevelopment = typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  constructor(message: string, retryAfterSec = 20) {
+    super(message);
+    this.name = 'RateLimitError';
+    this.retryAfterSec = Math.max(1, Math.ceil(retryAfterSec));
+  }
+}
 
-    if ((isNetworkOrCorsError || isTimeout) && isDevelopment) {
-      console.warn("Direct API call failed/timed out. Falling back to local Vite proxy...", error.message);
-      try {
-        const targetUrl = new URL(url);
-        const origin = targetUrl.origin;
-        const pathname = targetUrl.pathname + targetUrl.search;
+export interface ApiErrorDetail {
+  '@type'?: string;
+  retryDelay?: string;
+  [key: string]: unknown;
+}
 
-        const proxyUrl = `/api/proxy${pathname}`;
-        const proxyHeaders = {
-          ...(options.headers || {}),
-          "X-Target-Url": origin
-        } as Record<string, string>;
+export interface ApiErrorData {
+  error?: {
+    code?: number;
+    message?: string;
+    status?: string;
+    details?: ApiErrorDetail[];
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
 
-        return await fetch(proxyUrl, {
-          ...options,
-          headers: proxyHeaders
-        });
-      } catch (proxySetupError) {
-        console.error("Vite proxy setup failed:", proxySetupError);
+export function parseRetryAfter(response?: Response, errorData?: ApiErrorData | null): number {
+  // 1. Try Google error.details[].retryDelay (e.g. "21.45s" or "60s")
+  if (errorData?.error?.details && Array.isArray(errorData.error.details)) {
+    for (const detail of errorData.error.details) {
+      if (detail.retryDelay && typeof detail.retryDelay === 'string') {
+        const secMatch = detail.retryDelay.match(/([\d.]+)s?/);
+        if (secMatch) {
+          const parsed = parseFloat(secMatch[1]);
+          if (!isNaN(parsed) && parsed > 0) {
+            return Math.ceil(parsed);
+          }
+        }
       }
     }
-    throw err;
   }
-};
 
-const MAX_DIMENSION = 1536; // Resize large images to this max dimension to speed up processing
-
-// Helper: Resize image and return DataURL (JPEG 0.9)
-const processImage = async (file: File): Promise<string> => {
-  // Use createImageBitmap for non-blocking decoding
-  // This is much faster than FileReader + Image.onload and runs off-main-thread where possible
-  const bitmap = await createImageBitmap(file);
-
-  let { width, height } = bitmap;
-
-  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
-    if (width > height) {
-      height = Math.round((height * MAX_DIMENSION) / width);
-      width = MAX_DIMENSION;
-    } else {
-      width = Math.round((width * MAX_DIMENSION) / height);
-      height = MAX_DIMENSION;
+  // 2. Try HTTP header 'Retry-After'
+  if (response && response.headers && typeof response.headers.get === 'function') {
+    const retryHeader = response.headers.get('Retry-After');
+    if (retryHeader) {
+      const parsed = parseInt(retryHeader, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
     }
   }
 
-  // Use OffscreenCanvas if available for better performance
-  if (typeof OffscreenCanvas !== 'undefined') {
-    const canvas = new OffscreenCanvas(width, height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Could not get offscreen context');
-
-    ctx.drawImage(bitmap, 0, 0, width, height);
-
-    // Low quality JPEG is fine for vision models usually, but 0.85 is a safe middle ground
-    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
-    bitmap.close();
-
-    // fast blob to base64
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } else {
-    // Fallback to Main Thread Canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      bitmap.close();
-      throw new Error('Canvas context unavailable');
+  // 3. Try parsing seconds from error message if text like "Please retry after 24s" or "wait 20s"
+  const rawMsg = errorData?.error?.message || (typeof errorData === 'string' ? errorData : '');
+  if (rawMsg) {
+    const match = rawMsg.match(/retry\s+after\s+([\d.]+)\s*s/i) || rawMsg.match(/wait\s+([\d.]+)\s*s/i);
+    if (match) {
+      const parsed = parseFloat(match[1]);
+      if (!isNaN(parsed) && parsed > 0) {
+        return Math.ceil(parsed);
+      }
     }
-
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    bitmap.close();
-    return dataUrl;
   }
-};
+
+  // 4. Default fallback: 20 seconds for standard RPM/TPM rolling window
+  return 20;
+}
+
+export function isRateLimitResponse(status: number, errorMsg: string, errorData?: ApiErrorData | null): boolean {
+  if (status === 429) return true;
+  const statusStr = (errorData?.error?.status || '').toUpperCase();
+  if (statusStr === 'RESOURCE_EXHAUSTED' || statusStr === 'RATE_LIMIT_EXCEEDED') return true;
+
+  const textToScan = `${errorMsg} ${JSON.stringify(errorData || '')}`.toLowerCase();
+  return (
+    textToScan.includes('resource_exhausted') ||
+    textToScan.includes('rate_limit') ||
+    textToScan.includes('rate limit') ||
+    textToScan.includes('quota exceeded') ||
+    textToScan.includes('too many requests') ||
+    textToScan.includes('tokens per minute') ||
+    textToScan.includes('requests per minute') ||
+    textToScan.includes('rpm') ||
+    textToScan.includes('tpm')
+  );
+}
 
 const generateWithGoogle = async (file: File, settings: AppSettings): Promise<string> => {
   // Use smart resizing
@@ -137,12 +128,19 @@ const generateWithGoogle = async (file: File, settings: AppSettings): Promise<st
 
   if (!response.ok) {
     let errorMsg = response.statusText;
+    let errorData: ApiErrorData | null = null;
     try {
-      const errorData = await response.json();
+      errorData = await response.json() as ApiErrorData;
       errorMsg = errorData.error?.message || JSON.stringify(errorData);
-    } catch (e) {
+    } catch {
       // ignore
     }
+
+    if (isRateLimitResponse(response.status, errorMsg, errorData)) {
+      const retryAfter = parseRetryAfter(response, errorData);
+      throw new RateLimitError(`Gemini API 速率限制/配额耗尽 (429): ${errorMsg}`, retryAfter);
+    }
+
     throw new Error(`Gemini API Error ${response.status}: ${errorMsg}`);
   }
 
@@ -184,7 +182,7 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
   }
 
   const payload = {
-    model: settings.model || "gpt-4-vision-preview",
+    model: settings.model || "gpt-4o",
     messages: [
       {
         role: "user",
@@ -233,16 +231,23 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
 
       if (!response.ok) {
         let errorMsg = response.statusText;
+        let errorData: ApiErrorData | null = null;
         try {
-          const errorData = await response.json();
+          errorData = await response.json() as ApiErrorData;
           errorMsg = errorData.error?.message || JSON.stringify(errorData);
-        } catch (e) {
+        } catch {
           // ignore
         }
-        // Don't throw immediately, let retry logic handle if appropriate, or throw if fatal
+
         if (response.status === 401 || response.status === 403) {
           throw new Error(`Auth Error ${response.status}: ${errorMsg} (Check API Key)`);
         }
+
+        if (isRateLimitResponse(response.status, errorMsg, errorData)) {
+          const retryAfter = parseRetryAfter(response, errorData);
+          throw new RateLimitError(`API 速率限制/配额耗尽 (429): ${errorMsg}`, retryAfter);
+        }
+
         throw new Error(`API Error ${response.status}: ${errorMsg}`);
       }
 
@@ -260,6 +265,11 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
       return content || "";
 
     } catch (error: unknown) {
+      if (error instanceof RateLimitError) {
+        // Bubble up immediately so global batch cooldown can manage it
+        throw error;
+      }
+
       lastError = error;
       const err = error as Error;
       console.warn(`Attempt ${attempt + 1} failed:`, err.message);
@@ -297,6 +307,9 @@ export const generateCaption = async (
       return await generateWithOpenAI(file, settings);
     }
   } catch (error: unknown) {
+    if (error instanceof RateLimitError) {
+      throw error;
+    }
     console.error("Generation Error:", error);
     const err = error as Error;
     throw new Error(err.message || "Failed to generate caption");
@@ -331,6 +344,9 @@ export const testConnection = async (settings: AppSettings): Promise<void> => {
       await generateWithOpenAI(dummyFile, testSettings);
     }
   } catch (error: unknown) {
+    if (error instanceof RateLimitError) {
+      throw error;
+    }
     console.error("Connection Test Error:", error);
     const err = error as Error;
     throw new Error(err.message || "Connection Test Failed");

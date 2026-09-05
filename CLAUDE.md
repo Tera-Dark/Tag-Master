@@ -29,9 +29,9 @@
    - 应用使用 `URL.createObjectURL(file)` 创建瞬时本地预览图链接。
    - **红线**：在任何删除图片（`removeImages`）、删除项目（`deleteProject`）、清除已打标（`clearDone`）或更新单张图片（`handleImageUpdate`）的逻辑中，**必须先显式调用 `URL.revokeObjectURL(previewUrl)`** 释放系统底层内存，避免大数据集场景下内存暴涨导致 OOM 崩溃。
 
-2. **本地样式打包 (Local CSS & Tailwind)**：
-   - 严禁在 `index.html` 中以外部 CDN 脚本形式引入 TailwindCSS。
-   - 所有 Tailwind 配置必须维护在本地的 `tailwind.config.js` 和 `postcss.config.js` (使用 `@tailwindcss/postcss` 以兼容 Tailwind v4) 中。
+2. **本地样式打包 (Local CSS & Tailwind v4)**：
+   - 严禁在 `index.html` 中以外部 CDN 脚本形式引入 TailwindCSS 或内联全局样式。
+   - 所有 Tailwind 配置采用 Tailwind v4 原生 CSS 规范维护在 `src/index.css`（包含 `@custom-variant dark` 与 `@theme` 扩展）和 `postcss.config.js` (`@tailwindcss/postcss`) 中，不再依赖旧版 `tailwind.config.js`。
    - 样式入口位于 `src/index.css`，并在 `src/index.tsx` 中导入以参与打包编译，从而确保应用 100% 具备离线可用能力。
 
 3. **IndexedDB 增量同步保存 (Incremental Sync)**：
@@ -47,3 +47,14 @@
 
 6. **React Hook 函数声明与依赖规范 (Declaration Order)**：
    - 在自定义 Hook (如 `useSelectionManager.ts`) 中，在 `useCallback` 的依赖数组中被引用的函数（如 `clearSelection`），**其物理声明顺序必须早于调用或引用它的 Hook**，以避免在 Vite 生产构建 (tsc) 静态分析时因“声明前使用”导致 TS2448 / TS2454 编译阻断。
+
+7. **多模型协议分流规范 (Dual Protocol Dispatch)**：
+   - 外部调用须通过 `geminiService.ts` 导出的 `generateTags`，系统通过 `settings.protocol` (`google` 或 `openai_compatible`) 分流至对应的多模态 payload 构建逻辑。添加新模型提供商时，严禁破坏已有的通用 OpenAI / Google 协议规范。
+
+8. **网格列数与缩放防覆盖规范 (Columns Setting Persistence)**：
+   - 网格列数范围固定为 3 到 8（默认 5），由 `useSettings` 的 `clampColumns` 规范。严禁在根组件的 `window.onresize` 监听器中盲目调用 `setSettings({ gridColumns })` 覆盖用户的个性化设定。
+
+9. **API 速率限制与 429 自动轮询保护规范 (Rate Limit & 429 Resilience)**：
+   - 遭遇 Google AI Studio (5 RPM / 250k TPM) 等配额耗尽或 HTTP 429 `RESOURCE_EXHAUSTED` 时，**严禁将图片标为红字 `error`，严禁递增 `consecutiveErrors` 触发 5 次连续错误强行中断任务**。
+   - 必须通过 `RateLimitError` 携带 `retryAfterSec`，将当前图片任务重新推回队首保持待处理态，并设置全局冷却时间戳 `coolingUntilRef`，通过倒计时轮询后无缝自动恢复继续打标，确保挂机任务零人工干预。
+

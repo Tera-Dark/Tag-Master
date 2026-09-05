@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Project, AppSettings, TagImage } from '../types';
-import { generateCaption } from '../services/geminiService';
+import { generateCaption, RateLimitError } from '../services/geminiService';
 
 export const useTagProcessor = (
     projects: Project[],
@@ -9,14 +9,38 @@ export const useTagProcessor = (
     onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void
 ) => {
     const [isProcessing, setIsProcessing] = useState(false);
+    const [coolingRemainingSec, setCoolingRemainingSec] = useState<number>(0);
     const shouldStopRef = useRef(false);
-    // We use a ref to track current projects state without re-triggering the effect loop constantly,
-    // but we need to ensure it's always fresh before the interval checks.
+    const coolingUntilRef = useRef<number>(0);
+    const lastRequestTimeRef = useRef<number>(0);
+    const queueRef = useRef<{ projId: string; imgId: string }[]>([]);
+
+    // We use a ref to track current projects state without re-triggering the effect loop constantly
     const projectsRef = useRef(projects);
+    const settingsRef = useRef(settings);
 
     useEffect(() => {
         projectsRef.current = projects;
     }, [projects]);
+
+    useEffect(() => {
+        settingsRef.current = settings;
+    }, [settings]);
+
+    // Cooldown countdown timer tick
+    useEffect(() => {
+        if (coolingRemainingSec <= 0) return;
+        const interval = setInterval(() => {
+            const now = Date.now();
+            const remaining = Math.max(0, Math.ceil((coolingUntilRef.current - now) / 1000));
+            setCoolingRemainingSec(remaining);
+            if (remaining <= 0) {
+                coolingUntilRef.current = 0;
+                clearInterval(interval);
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [coolingRemainingSec]);
 
     const filterCaption = (text: string, blocked: string[]) => {
         if (!blocked || blocked.length === 0) return text;
@@ -31,191 +55,293 @@ export const useTagProcessor = (
         return filtered.replace(/,\s*,/g, ',').replace(/\s\s+/g, ' ').trim().replace(/^,/, '').replace(/,$/, '');
     };
 
+    const getTargetInterval = (currSettings: AppSettings): number => {
+        if (currSettings.rateLimitPreset === 'google_5rpm') return 12;
+        if (currSettings.rateLimitPreset === 'google_15rpm') return 4.5;
+        if (currSettings.rateLimitPreset === 'custom') return Math.max(0, currSettings.requestIntervalSec || 0);
+        return 0;
+    };
+
+    // Internal caption generation & formatting (throws RateLimitError to be caught by worker or single handler)
+    const processImageCaption = useCallback(async (projId: string, imgId: string, currentSettings: AppSettings): Promise<string> => {
+        const currentProject = projectsRef.current.find(p => p.id === projId);
+        const img = currentProject?.images.find(i => i.id === imgId);
+        if (!currentProject || !img) {
+            throw new Error('Image or project not found');
+        }
+
+        updateImageStatus(projId, imgId, 'loading');
+
+        let caption = '';
+        let attempts = 0;
+        const maxAttempts = 3;
+
+        while (attempts < maxAttempts) {
+            try {
+                caption = await generateCaption(img.file, currentSettings);
+                break; // Success
+            } catch (error: unknown) {
+                if (error instanceof RateLimitError) {
+                    // Propagate immediately so rate limit cooldown and auto-retry handles it
+                    throw error;
+                }
+
+                attempts++;
+                const err = error as Error;
+                const errMsg = err.message || String(error);
+                const isAuthError = errMsg.includes('401') || errMsg.includes('unauthorized') || errMsg.includes('403') || errMsg.includes('key') || errMsg.includes('Key');
+
+                if (attempts < maxAttempts && !isAuthError) {
+                    const delay = attempts * 2500;
+                    onShowToast?.(`Retrying ${img.file.name} in ${delay / 1000}s... (${attempts}/${maxAttempts})`, 'info');
+                    const isTestEnv = typeof globalThis !== 'undefined' &&
+                        'process' in globalThis &&
+                        (globalThis as unknown as { process: { env: { NODE_ENV: string } } }).process?.env?.NODE_ENV === 'test';
+                    if (isTestEnv) {
+                        await Promise.resolve();
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                } else {
+                    throw error;
+                }
+            }
+        }
+
+        // Apply filtering (legacy blocked words)
+        if (currentSettings.blockedWords && currentSettings.blockedWords.length > 0) {
+            caption = filterCaption(caption, currentSettings.blockedWords);
+        }
+
+        // Apply Replacement Rules (Regex)
+        if (currentSettings.replacementRules && currentSettings.replacementRules.length > 0) {
+            currentSettings.replacementRules.forEach(rule => {
+                if (rule.pattern) {
+                    try {
+                        let pattern = rule.pattern;
+                        let flags = 'gi';
+                        if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
+                            const lastSlash = pattern.lastIndexOf('/');
+                            flags = pattern.substring(lastSlash + 1);
+                            pattern = pattern.substring(1, lastSlash);
+                        }
+                        const regex = new RegExp(pattern, flags);
+                        caption = caption.replace(regex, rule.replace);
+                    } catch (e) {
+                        console.warn("Invalid regex rule:", rule.pattern, e);
+                    }
+                }
+            });
+        }
+
+        // Apply Trigger Word
+        if (currentProject.triggerWord) {
+            const trigger = currentProject.triggerWord.trim();
+            const regex = new RegExp(`\\b${trigger}\\b`, 'gi');
+            caption = caption.replace(regex, '').replace(/,\s*,/g, ',').trim();
+            caption = `${trigger}, ${caption}`;
+        }
+
+        // Cleanup comma mess
+        caption = caption.replace(/,\s*,/g, ',').replace(/\s\s+/g, ' ').trim().replace(/^,/, '').replace(/,$/, '');
+        return caption;
+    }, [updateImageStatus, onShowToast]);
+
     const handleTagSingle = useCallback(async (projId: string, imgId: string): Promise<boolean> => {
         const currentProject = projectsRef.current.find(p => p.id === projId);
         const img = currentProject?.images.find(i => i.id === imgId);
         if (!currentProject || !img) return false;
 
-        updateImageStatus(projId, imgId, 'loading');
         try {
-            let caption = '';
-            let attempts = 0;
-            const maxAttempts = 3;
-
-            while (attempts < maxAttempts) {
-                try {
-                    caption = await generateCaption(img.file, settings);
-                    break; // Success
-                } catch (error: unknown) {
-                    attempts++;
-                    const err = error as Error;
-                    const errMsg = err.message || String(error);
-                    const isAuthError = errMsg.includes('401') || errMsg.includes('unauthorized') || errMsg.includes('403') || errMsg.includes('key') || errMsg.includes('Key');
-
-                    if (attempts < maxAttempts && !isAuthError) {
-                        const delay = attempts * 2500;
-                        onShowToast?.(`Retrying ${img.file.name} in ${delay / 1000}s... (${attempts}/${maxAttempts})`, 'info');
-                        const isTestEnv = typeof globalThis !== 'undefined' &&
-                            'process' in globalThis &&
-                            (globalThis as unknown as { process: { env: { NODE_ENV: string } } }).process?.env?.NODE_ENV === 'test';
-                        if (isTestEnv) {
-                            // Skip timeout in unit tests
-                            await Promise.resolve();
-                        } else {
-                            await new Promise(resolve => setTimeout(resolve, delay));
-                        }
-                    } else {
-                        throw error;
-                    }
-                }
-            }
-
-            // Apply filtering (legacy blocked words)
-            if (settings.blockedWords && settings.blockedWords.length > 0) {
-                caption = filterCaption(caption, settings.blockedWords);
-            }
-
-            // Apply Replacement Rules (Regex)
-            if (settings.replacementRules && settings.replacementRules.length > 0) {
-                settings.replacementRules.forEach(rule => {
-                    if (rule.pattern) {
-                        try {
-                            // Support regex flags if user wraps in /.../gi, otherwise default to global case-insensitive string match
-                            let pattern = rule.pattern;
-                            let flags = 'gi';
-                            if (pattern.startsWith('/') && pattern.lastIndexOf('/') > 0) {
-                                const lastSlash = pattern.lastIndexOf('/');
-                                flags = pattern.substring(lastSlash + 1);
-                                pattern = pattern.substring(1, lastSlash);
-                            }
-                            const regex = new RegExp(pattern, flags);
-                            caption = caption.replace(regex, rule.replace);
-                        } catch (e) {
-                            console.warn("Invalid regex rule:", rule.pattern, e);
-                        }
-                    }
-                });
-            }
-
-            // Apply Trigger Word
-            if (currentProject.triggerWord) {
-                const trigger = currentProject.triggerWord.trim();
-                // Remove if already exists to avoid duplication
-                const regex = new RegExp(`\\b${trigger}\\b`, 'gi');
-                caption = caption.replace(regex, '').replace(/,\s*,/g, ',').trim();
-                // Prepend
-                caption = `${trigger}, ${caption}`;
-            }
-
-            // Cleanup comma mess
-            caption = caption.replace(/,\s*,/g, ',').replace(/\s\s+/g, ' ').trim().replace(/^,/, '').replace(/,$/, '');
-
+            const caption = await processImageCaption(projId, imgId, settings);
             updateImageStatus(projId, imgId, 'success', undefined, caption);
             onShowToast?.(`Tagged: ${img.file.name}`, 'success');
             return true;
         } catch (error: unknown) {
             const err = error as Error;
-            updateImageStatus(projId, imgId, 'error', err.message);
-            onShowToast?.(`Failed: ${img.file.name}`, 'error');
+            if (error instanceof RateLimitError) {
+                updateImageStatus(projId, imgId, 'error', `API 速率限制 (429): 请等待 ${error.retryAfterSec}s 后重试`);
+                onShowToast?.(`⚠️ API 速率限制 (5 RPM): 请等待 ${error.retryAfterSec}s 后重试`, 'error');
+            } else {
+                updateImageStatus(projId, imgId, 'error', err.message);
+                onShowToast?.(`Failed: ${img.file.name}`, 'error');
+            }
             return false;
         }
-    }, [settings, updateImageStatus, onShowToast]);
+    }, [settings, updateImageStatus, onShowToast, processImageCaption]);
 
-    const handleBatchTag = useCallback((targetProjectId: string | 'all', onStartSettingsError: () => void, selectedIds?: Set<string>) => {
+    const handleBatchTag = useCallback(async (
+        targetProjectId: string | 'all',
+        onStartSettingsError: () => void,
+        selectedIds?: Set<string>
+    ) => {
         if (!settings.apiKey) {
             onStartSettingsError();
             return;
         }
 
         shouldStopRef.current = false;
+        coolingUntilRef.current = 0;
+        setCoolingRemainingSec(0);
         setIsProcessing(true);
+
         const countMsg = selectedIds && selectedIds.size > 0 ? ` (${selectedIds.size} selected)` : '';
         onShowToast?.(`Batch processing started${countMsg}`, 'info');
 
         // Calculate Queue
-        const queue: { projId: string, imgId: string }[] = [];
-        // If selectedIds provided, we scan all projects but only add if image ID is in selection
-        // Optimization: In 'all' mode or specific project mode, we still scan projects structure
+        const initialQueue: { projId: string, imgId: string }[] = [];
         const targetProjects = targetProjectId === 'all'
             ? projectsRef.current
             : projectsRef.current.filter(p => p.id === targetProjectId);
 
         targetProjects.forEach(p => {
             p.images.forEach(img => {
-                // If selective mode, check existence. If not, process all idle/error
                 const isSelected = selectedIds && selectedIds.size > 0 ? selectedIds.has(img.id) : true;
-
                 if (isSelected && (img.status === 'idle' || img.status === 'error')) {
-                    queue.push({ projId: p.id, imgId: img.id });
+                    initialQueue.push({ projId: p.id, imgId: img.id });
                 }
             });
         });
 
-        if (queue.length === 0) {
+        if (initialQueue.length === 0) {
             setIsProcessing(false);
             onShowToast?.('No images to process', 'info');
             return;
         }
 
-        const concurrency = Math.max(1, Math.min(20, settings.concurrency || 3));
-        let active = 0;
-        let idx = 0;
+        queueRef.current = initialQueue;
+
+        const isTestEnv = typeof globalThis !== 'undefined' &&
+            'process' in globalThis &&
+            (globalThis as unknown as { process: { env: { NODE_ENV: string } } }).process?.env?.NODE_ENV === 'test';
+
+        // Respect rate limit presets for concurrency
+        const effectiveConcurrency = settings.rateLimitPreset === 'google_5rpm'
+            ? 1
+            : (settings.rateLimitPreset === 'google_15rpm'
+                ? 1
+                : Math.max(1, Math.min(20, settings.concurrency || 3)));
 
         let consecutiveErrors = 0;
-        const processNext = async () => {
-            if (shouldStopRef.current || idx >= queue.length) return;
 
-            // Offline protection
-            if (!navigator.onLine) {
-                shouldStopRef.current = true;
-                onShowToast?.('Network offline. Processing suspended.', 'error');
-                return;
-            }
+        const runWorker = async () => {
+            while (!shouldStopRef.current) {
+                // 1. If currently in cooldown, wait until cooldown expires or user pauses
+                while (coolingUntilRef.current > Date.now()) {
+                    if (shouldStopRef.current) return;
+                    const waitMs = Math.min(500, coolingUntilRef.current - Date.now());
+                    if (!isTestEnv) {
+                        await new Promise(r => setTimeout(r, waitMs));
+                    } else {
+                        await Promise.resolve();
+                        coolingUntilRef.current = 0;
+                        break;
+                    }
+                }
 
-            const task = queue[idx++];
-            active++;
-            try { 
-                const success = await handleTagSingle(task.projId, task.imgId); 
-                if (success) {
+                // 2. Pop next task
+                const task = queueRef.current.shift();
+                if (!task) {
+                    break; // No more tasks in queue
+                }
+
+                // 3. Active rate-limit pacing (safe interval between requests)
+                const targetInterval = getTargetInterval(settingsRef.current);
+                if (targetInterval > 0 && lastRequestTimeRef.current > 0) {
+                    const elapsed = (Date.now() - lastRequestTimeRef.current) / 1000;
+                    if (elapsed < targetInterval) {
+                        const waitSec = targetInterval - elapsed;
+                        if (!isTestEnv) {
+                            await new Promise(r => setTimeout(r, waitSec * 1000));
+                        }
+                    }
+                }
+
+                if (shouldStopRef.current) {
+                    queueRef.current.unshift(task);
+                    break;
+                }
+
+                // Offline protection
+                if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                    queueRef.current.unshift(task);
+                    shouldStopRef.current = true;
+                    onShowToast?.('Network offline. Processing suspended.', 'error');
+                    break;
+                }
+
+                lastRequestTimeRef.current = Date.now();
+                const currentProject = projectsRef.current.find(p => p.id === task.projId);
+                const img = currentProject?.images.find(i => i.id === task.imgId);
+
+                try {
+                    const caption = await processImageCaption(task.projId, task.imgId, settingsRef.current);
+                    updateImageStatus(task.projId, task.imgId, 'success', undefined, caption);
+                    if (img) onShowToast?.(`Tagged: ${img.file.name}`, 'success');
                     consecutiveErrors = 0;
-                } else {
-                    consecutiveErrors++;
-                    if (consecutiveErrors >= 5) {
-                        shouldStopRef.current = true;
-                        onShowToast?.('Multiple consecutive errors. Batch paused. Please check API Config.', 'error');
+                } catch (error: unknown) {
+                    if (error instanceof RateLimitError) {
+                        // Rate limit triggered!
+                        // 1. Put task back to the front of queue to process again once quota resets
+                        queueRef.current.unshift(task);
+                        // 2. Keep status as 'idle' so it doesn't display as red failed error
+                        updateImageStatus(task.projId, task.imgId, 'idle');
+
+                        // 3. Set global cooldown (with +2s safety buffer)
+                        const waitSec = Math.max(5, error.retryAfterSec + 2);
+                        const targetUntil = Date.now() + waitSec * 1000;
+                        if (targetUntil > coolingUntilRef.current) {
+                            coolingUntilRef.current = targetUntil;
+                            setCoolingRemainingSec(waitSec);
+                            onShowToast?.(`⚠️ 触发 API 限制 (5次/分或Token配额耗尽)，正在自动排队轮询... ${waitSec}s 后自动恢复`, 'info');
+                        }
+                        // Note: do NOT increment consecutiveErrors!
+                    } else {
+                        // Standard error
+                        const err = error as Error;
+                        updateImageStatus(task.projId, task.imgId, 'error', err.message);
+                        if (img) onShowToast?.(`Failed: ${img.file.name}`, 'error');
+                        consecutiveErrors++;
+                        if (consecutiveErrors >= 5) {
+                            shouldStopRef.current = true;
+                            onShowToast?.('Multiple consecutive errors. Batch paused. Please check API Config.', 'error');
+                            break;
+                        }
                     }
                 }
             }
-            finally {
-                active--;
-                if (!shouldStopRef.current) processNext();
-            }
         };
 
-        // Start initial pool
-        const initialBatch = [];
-        for (let i = 0; i < concurrency; i++) initialBatch.push(processNext());
+        const workers = Array.from({ length: effectiveConcurrency }, () => runWorker());
+        await Promise.all(workers);
 
-        // Monitor completion
-        const interval = setInterval(() => {
-            if ((idx >= queue.length && active === 0) || shouldStopRef.current) {
-                clearInterval(interval);
-                setIsProcessing(false);
-                if (!shouldStopRef.current) {
-                    onShowToast?.('Batch processing complete', 'success');
-                } else {
-                    onShowToast?.('Batch processing paused', 'info');
-                }
-            }
-        }, 500);
-    }, [settings, handleTagSingle, onShowToast]);
+        setIsProcessing(false);
+        setCoolingRemainingSec(0);
+        coolingUntilRef.current = 0;
+
+        if (!shouldStopRef.current) {
+            onShowToast?.('Batch processing complete', 'success');
+        } else {
+            onShowToast?.('Batch processing paused', 'info');
+        }
+    }, [settings, updateImageStatus, onShowToast, processImageCaption]);
 
     const pause = useCallback(() => {
         shouldStopRef.current = true;
+        coolingUntilRef.current = 0;
+        setCoolingRemainingSec(0);
+    }, []);
+
+    const skipCooldown = useCallback(() => {
+        coolingUntilRef.current = 0;
+        setCoolingRemainingSec(0);
     }, []);
 
     return {
         isProcessing,
+        isCooling: coolingRemainingSec > 0,
+        coolingCountdown: coolingRemainingSec,
+        skipCooldown,
         startBatch: handleBatchTag,
         pause,
         processSingle: handleTagSingle

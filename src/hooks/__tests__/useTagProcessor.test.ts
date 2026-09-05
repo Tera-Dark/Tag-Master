@@ -5,9 +5,13 @@ import { AppSettings, Project, TagImage } from '../../types';
 import * as geminiService from '../../services/geminiService';
 
 // Mock the geminiService
-vi.mock('../../services/geminiService', () => ({
-    generateCaption: vi.fn(),
-}));
+vi.mock('../../services/geminiService', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../services/geminiService')>();
+    return {
+        ...actual,
+        generateCaption: vi.fn(),
+    };
+});
 
 const mockGenerateCaption = geminiService.generateCaption as import('vitest').Mock;
 
@@ -134,6 +138,61 @@ describe('useTagProcessor', () => {
             'success',
             undefined,
             'feline, dog, bird, feline, Dog'
+        );
+
+        unmount();
+    });
+
+    it('should handle RateLimitError in processSingle with cooling notification', async () => {
+        const rateLimitErr = new geminiService.RateLimitError('Quota exceeded', 12);
+        mockGenerateCaption.mockRejectedValue(rateLimitErr);
+
+        const { result, unmount } = renderHook(() =>
+            useTagProcessor([mockProject], mockSettings, mockUpdateImageStatus, mockOnShowToast)
+        );
+
+        await act(async () => {
+            await result.current.processSingle('proj1', 'img1');
+        });
+
+        expect(mockUpdateImageStatus).toHaveBeenCalledWith(
+            'proj1',
+            'img1',
+            'error',
+            'API 速率限制 (429): 请等待 12s 后重试'
+        );
+        expect(mockOnShowToast).toHaveBeenCalledWith(
+            '⚠️ API 速率限制 (5 RPM): 请等待 12s 后重试',
+            'error'
+        );
+
+        unmount();
+    });
+
+    it('should handle RateLimitError in startBatch by reverting to idle, entering cooldown, and succeeding on retry', async () => {
+        const rateLimitErr = new geminiService.RateLimitError('Quota exceeded', 10);
+        // First attempt fails with rate limit, second attempt succeeds
+        mockGenerateCaption
+            .mockRejectedValueOnce(rateLimitErr)
+            .mockResolvedValueOnce('masterpiece, girl');
+
+        const { result, unmount } = renderHook(() =>
+            useTagProcessor([mockProject], mockSettings, mockUpdateImageStatus, mockOnShowToast)
+        );
+
+        await act(async () => {
+            await result.current.startBatch('proj1', vi.fn());
+        });
+
+        // Verify status was reverted to 'idle' on rate limit
+        expect(mockUpdateImageStatus).toHaveBeenCalledWith('proj1', 'img1', 'idle');
+        // And finally succeeded
+        expect(mockUpdateImageStatus).toHaveBeenLastCalledWith(
+            'proj1',
+            'img1',
+            'success',
+            undefined,
+            'test_trigger, masterpiece, 1girl'
         );
 
         unmount();
