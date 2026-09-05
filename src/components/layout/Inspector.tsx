@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { TagImage } from '../../types';
-import { Wand2, Loader2, Layers, MousePointer2, Download } from '../Icons';
+import { Wand2, Loader2, Layers, MousePointer2, Download, AlertCircle } from '../Icons';
 
 export interface InspectorProps {
     activeImage?: TagImage;
@@ -147,6 +147,39 @@ export const Inspector: React.FC<InspectorProps> = ({
                         <div className="aspect-square rounded-2xl overflow-hidden bg-white dark:bg-[#212121] border border-black/[0.06] dark:border-white/[0.08] shadow-2xs relative group flex items-center justify-center p-3.5">
                             <img src={activeImage.previewUrl} className="w-full h-full object-contain" />
                         </div>
+
+                        {/* Error Notification Card if status === 'error' */}
+                        {activeImage.status === 'error' && (
+                            <div className="p-3.5 bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-2xl flex flex-col gap-2.5">
+                                <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-semibold text-xs">
+                                    <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                                    <span>处理失败 / Error</span>
+                                </div>
+                                <div className="text-xs text-red-600 dark:text-red-300 leading-relaxed break-words font-mono bg-white/70 dark:bg-black/30 p-2.5 rounded-xl border border-red-100 dark:border-red-900/30">
+                                    {activeImage.errorMsg || '打标请求失败，请检查配置或重试。'}
+                                </div>
+                                {activeImage.errorMsg && (
+                                    activeImage.errorMsg.includes('CORS') ||
+                                    activeImage.errorMsg.includes('跨域') ||
+                                    activeImage.errorMsg.includes('Failed to fetch')
+                                ) && (
+                                    <div className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-normal bg-zinc-100/90 dark:bg-zinc-800/90 p-3 rounded-xl space-y-1.5 border border-black/[0.04] dark:border-white/[0.05]">
+                                        <p className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1">
+                                            <span>💡</span> 为什么在 Cherry Studio 正常，网页端却失败？
+                                        </p>
+                                        <p className="text-zinc-600 dark:text-zinc-400">
+                                            Cherry Studio 是桌面客户端（Node.js/Electron），不受浏览器跨域安全限制；而本系统部署在网页端，浏览器强制执行跨域安全检查（CORS）。该服务商未开启跨域支持。
+                                        </p>
+                                        <p className="font-semibold text-zinc-800 dark:text-zinc-200 pt-0.5">推荐解决方案：</p>
+                                        <ul className="list-disc pl-4 space-y-1 text-zinc-600 dark:text-zinc-400">
+                                            <li>换用原生支持跨域的服务（如 Google 官方 Gemini、SiliconFlow 等）</li>
+                                            <li>在本地终端运行 <code className="px-1 py-0.5 bg-black/[0.06] dark:bg-white/[0.1] rounded text-[10px] font-mono">npm run dev</code> 打开本地地址（内置代理，同桌面体验）</li>
+                                            <li>若为自建/第三方中转站，在服务端配置开启 CORS 允许跨域</li>
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div className="space-y-2.5">
                             <div className="flex justify-between items-center">

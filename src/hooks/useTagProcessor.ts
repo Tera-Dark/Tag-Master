@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Project, AppSettings, TagImage } from '../types';
 import { generateCaption, RateLimitError } from '../services/geminiService';
+import { sleepWithSignal } from '../services/networkUtils';
 
 export const useTagProcessor = (
     projects: Project[],
@@ -14,6 +15,7 @@ export const useTagProcessor = (
     const coolingUntilRef = useRef<number>(0);
     const lastRequestTimeRef = useRef<number>(0);
     const queueRef = useRef<{ projId: string; imgId: string }[]>([]);
+    const activeAbortControllerRef = useRef<AbortController | null>(null);
 
     // We use a ref to track current projects state without re-triggering the effect loop constantly
     const projectsRef = useRef(projects);
@@ -26,6 +28,17 @@ export const useTagProcessor = (
     useEffect(() => {
         settingsRef.current = settings;
     }, [settings]);
+
+    // Cleanup abort controller on unmount
+    useEffect(() => {
+        return () => {
+            shouldStopRef.current = true;
+            if (activeAbortControllerRef.current) {
+                activeAbortControllerRef.current.abort();
+                activeAbortControllerRef.current = null;
+            }
+        };
+    }, []);
 
     // Cooldown countdown timer tick
     useEffect(() => {
@@ -63,7 +76,12 @@ export const useTagProcessor = (
     };
 
     // Internal caption generation & formatting (throws RateLimitError to be caught by worker or single handler)
-    const processImageCaption = useCallback(async (projId: string, imgId: string, currentSettings: AppSettings): Promise<string> => {
+    const processImageCaption = useCallback(async (
+        projId: string,
+        imgId: string,
+        currentSettings: AppSettings,
+        signal?: AbortSignal
+    ): Promise<string> => {
         const currentProject = projectsRef.current.find(p => p.id === projId);
         const img = currentProject?.images.find(i => i.id === imgId);
         if (!currentProject || !img) {
@@ -77,10 +95,24 @@ export const useTagProcessor = (
         const maxAttempts = 3;
 
         while (attempts < maxAttempts) {
+            if (shouldStopRef.current || signal?.aborted) {
+                const abortErr = new Error('Processing aborted');
+                abortErr.name = 'AbortError';
+                throw abortErr;
+            }
+
             try {
-                caption = await generateCaption(img.file, currentSettings);
+                caption = signal
+                    ? await generateCaption(img.file, currentSettings, signal)
+                    : await generateCaption(img.file, currentSettings);
                 break; // Success
             } catch (error: unknown) {
+                if (shouldStopRef.current || signal?.aborted) {
+                    const abortErr = new Error('Processing aborted');
+                    abortErr.name = 'AbortError';
+                    throw abortErr;
+                }
+
                 if (error instanceof RateLimitError) {
                     // Propagate immediately so rate limit cooldown and auto-retry handles it
                     throw error;
@@ -89,9 +121,19 @@ export const useTagProcessor = (
                 attempts++;
                 const err = error as Error;
                 const errMsg = err.message || String(error);
-                const isAuthError = errMsg.includes('401') || errMsg.includes('unauthorized') || errMsg.includes('403') || errMsg.includes('key') || errMsg.includes('Key');
+                const isFatal =
+                    errMsg.includes('401') ||
+                    errMsg.includes('unauthorized') ||
+                    errMsg.includes('403') ||
+                    errMsg.includes('404') ||
+                    errMsg.includes('key') ||
+                    errMsg.includes('Key') ||
+                    errMsg.includes('CORS') ||
+                    errMsg.includes('跨域') ||
+                    errMsg.includes('Failed to fetch') ||
+                    errMsg.includes('NetworkError');
 
-                if (attempts < maxAttempts && !isAuthError) {
+                if (attempts < maxAttempts && !isFatal && !shouldStopRef.current && !signal?.aborted) {
                     const delay = attempts * 2500;
                     onShowToast?.(`Retrying ${img.file.name} in ${delay / 1000}s... (${attempts}/${maxAttempts})`, 'info');
                     const isTestEnv = typeof globalThis !== 'undefined' &&
@@ -100,7 +142,7 @@ export const useTagProcessor = (
                     if (isTestEnv) {
                         await Promise.resolve();
                     } else {
-                        await new Promise(resolve => setTimeout(resolve, delay));
+                        await sleepWithSignal(delay, signal);
                     }
                 } else {
                     throw error;
@@ -158,6 +200,10 @@ export const useTagProcessor = (
             onShowToast?.(`Tagged: ${img.file.name}`, 'success');
             return true;
         } catch (error: unknown) {
+            if ((error as Error)?.name === 'AbortError') {
+                updateImageStatus(projId, imgId, 'idle');
+                return false;
+            }
             const err = error as Error;
             if (error instanceof RateLimitError) {
                 updateImageStatus(projId, imgId, 'error', `API 速率限制 (429): 请等待 ${error.retryAfterSec}s 后重试`);
@@ -183,6 +229,8 @@ export const useTagProcessor = (
         shouldStopRef.current = false;
         coolingUntilRef.current = 0;
         setCoolingRemainingSec(0);
+        const abortController = new AbortController();
+        activeAbortControllerRef.current = abortController;
         setIsProcessing(true);
 
         const countMsg = selectedIds && selectedIds.size > 0 ? ` (${selectedIds.size} selected)` : '';
@@ -205,6 +253,7 @@ export const useTagProcessor = (
 
         if (initialQueue.length === 0) {
             setIsProcessing(false);
+            activeAbortControllerRef.current = null;
             onShowToast?.('No images to process', 'info');
             return;
         }
@@ -225,19 +274,25 @@ export const useTagProcessor = (
         let consecutiveErrors = 0;
 
         const runWorker = async () => {
-            while (!shouldStopRef.current) {
+            while (!shouldStopRef.current && !abortController.signal.aborted) {
                 // 1. If currently in cooldown, wait until cooldown expires or user pauses
                 while (coolingUntilRef.current > Date.now()) {
-                    if (shouldStopRef.current) return;
+                    if (shouldStopRef.current || abortController.signal.aborted) return;
                     const waitMs = Math.min(500, coolingUntilRef.current - Date.now());
                     if (!isTestEnv) {
-                        await new Promise(r => setTimeout(r, waitMs));
+                        try {
+                            await sleepWithSignal(waitMs, abortController.signal);
+                        } catch {
+                            if (shouldStopRef.current || abortController.signal.aborted) return;
+                        }
                     } else {
                         await Promise.resolve();
                         coolingUntilRef.current = 0;
                         break;
                     }
                 }
+
+                if (shouldStopRef.current || abortController.signal.aborted) break;
 
                 // 2. Pop next task
                 const task = queueRef.current.shift();
@@ -252,12 +307,17 @@ export const useTagProcessor = (
                     if (elapsed < targetInterval) {
                         const waitSec = targetInterval - elapsed;
                         if (!isTestEnv) {
-                            await new Promise(r => setTimeout(r, waitSec * 1000));
+                            try {
+                                await sleepWithSignal(waitSec * 1000, abortController.signal);
+                            } catch {
+                                queueRef.current.unshift(task);
+                                break;
+                            }
                         }
                     }
                 }
 
-                if (shouldStopRef.current) {
+                if (shouldStopRef.current || abortController.signal.aborted) {
                     queueRef.current.unshift(task);
                     break;
                 }
@@ -275,11 +335,19 @@ export const useTagProcessor = (
                 const img = currentProject?.images.find(i => i.id === task.imgId);
 
                 try {
-                    const caption = await processImageCaption(task.projId, task.imgId, settingsRef.current);
+                    const caption = await processImageCaption(task.projId, task.imgId, settingsRef.current, abortController.signal);
                     updateImageStatus(task.projId, task.imgId, 'success', undefined, caption);
                     if (img) onShowToast?.(`Tagged: ${img.file.name}`, 'success');
                     consecutiveErrors = 0;
                 } catch (error: unknown) {
+                    const isUserAborted = shouldStopRef.current || abortController.signal.aborted;
+                    if (isUserAborted) {
+                        // Immediately restore to idle and back to queue
+                        queueRef.current.unshift(task);
+                        updateImageStatus(task.projId, task.imgId, 'idle');
+                        break;
+                    }
+
                     if (error instanceof RateLimitError) {
                         // Rate limit triggered!
                         // 1. Put task back to the front of queue to process again once quota resets
@@ -304,6 +372,7 @@ export const useTagProcessor = (
                         consecutiveErrors++;
                         if (consecutiveErrors >= 5) {
                             shouldStopRef.current = true;
+                            abortController.abort();
                             onShowToast?.('Multiple consecutive errors. Batch paused. Please check API Config.', 'error');
                             break;
                         }
@@ -318,8 +387,11 @@ export const useTagProcessor = (
         setIsProcessing(false);
         setCoolingRemainingSec(0);
         coolingUntilRef.current = 0;
+        if (activeAbortControllerRef.current === abortController) {
+            activeAbortControllerRef.current = null;
+        }
 
-        if (!shouldStopRef.current) {
+        if (!shouldStopRef.current && !abortController.signal.aborted) {
             onShowToast?.('Batch processing complete', 'success');
         } else {
             onShowToast?.('Batch processing paused', 'info');
@@ -330,6 +402,10 @@ export const useTagProcessor = (
         shouldStopRef.current = true;
         coolingUntilRef.current = 0;
         setCoolingRemainingSec(0);
+        if (activeAbortControllerRef.current) {
+            activeAbortControllerRef.current.abort();
+            activeAbortControllerRef.current = null;
+        }
     }, []);
 
     const skipCooldown = useCallback(() => {

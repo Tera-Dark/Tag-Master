@@ -20,21 +20,21 @@ const DEFAULT_PROVIDERS: AiProvider[] = [
         group: 'gemini'
       },
       {
-        id: 'gemini-2.5-flash',
-        name: 'Gemini 2.5 Flash',
+        id: 'gemini-2.0-flash-lite',
+        name: 'Gemini 2.0 Flash Lite',
         capabilities: ['vision', 'text', 'audio', 'video', 'tools'],
-        group: 'gemini'
-      },
-      {
-        id: 'gemini-2.5-pro',
-        name: 'Gemini 2.5 Pro',
-        capabilities: ['vision', 'text', 'audio', 'video', 'tools', 'reasoning'],
         group: 'gemini'
       },
       {
         id: 'gemini-1.5-flash',
         name: 'Gemini 1.5 Flash',
         capabilities: ['vision', 'text', 'audio', 'video', 'tools'],
+        group: 'gemini'
+      },
+      {
+        id: 'gemini-1.5-pro',
+        name: 'Gemini 1.5 Pro',
+        capabilities: ['vision', 'text', 'audio', 'video', 'tools', 'reasoning'],
         group: 'gemini'
       }
     ]

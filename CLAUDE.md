@@ -49,7 +49,7 @@
    - 在自定义 Hook (如 `useSelectionManager.ts`) 中，在 `useCallback` 的依赖数组中被引用的函数（如 `clearSelection`），**其物理声明顺序必须早于调用或引用它的 Hook**，以避免在 Vite 生产构建 (tsc) 静态分析时因“声明前使用”导致 TS2448 / TS2454 编译阻断。
 
 7. **多模型协议分流规范 (Dual Protocol Dispatch)**：
-   - 外部调用须通过 `geminiService.ts` 导出的 `generateTags`，系统通过 `settings.protocol` (`google` 或 `openai_compatible`) 分流至对应的多模态 payload 构建逻辑。添加新模型提供商时，严禁破坏已有的通用 OpenAI / Google 协议规范。
+   - 外部调用须通过 `geminiService.ts` 导出的 `generateCaption`，系统通过 `settings.protocol` (`google` 或 `openai_compatible`) 分流至对应的多模态 payload 构建逻辑。添加新模型提供商时，严禁破坏已有的通用 OpenAI / Google 协议规范。
 
 8. **网格列数与缩放防覆盖规范 (Columns Setting Persistence)**：
    - 网格列数范围固定为 3 到 8（默认 5），由 `useSettings` 的 `clampColumns` 规范。严禁在根组件的 `window.onresize` 监听器中盲目调用 `setSettings({ gridColumns })` 覆盖用户的个性化设定。
@@ -57,4 +57,17 @@
 9. **API 速率限制与 429 自动轮询保护规范 (Rate Limit & 429 Resilience)**：
    - 遭遇 Google AI Studio (5 RPM / 250k TPM) 等配额耗尽或 HTTP 429 `RESOURCE_EXHAUSTED` 时，**严禁将图片标为红字 `error`，严禁递增 `consecutiveErrors` 触发 5 次连续错误强行中断任务**。
    - 必须通过 `RateLimitError` 携带 `retryAfterSec`，将当前图片任务重新推回队首保持待处理态，并设置全局冷却时间戳 `coolingUntilRef`，通过倒计时轮询后无缝自动恢复继续打标，确保挂机任务零人工干预。
+
+10. **即时暂停与网络超时隔离规范 (AbortController & Timeout Disambiguation)**：
+    - 批处理暂停必须基于 `AbortController` 深度绑定底层 `fetch` 与中断式休眠 `sleepWithSignal`，确保用户点击「暂停」时毫秒级停止，在途请求图片优雅回滚为 `idle`。
+    - **红线**：严禁将底层请求 60s 产生的网络超时 `AbortError` 混同为用户主动点击暂停。只有 `userAbortSignal.aborted === true` 或 `shouldStopRef.current === true` 时才允许退出 Worker 并标记暂停；对于网络超时，必须抛出显式超时异常并在图片上标记 `error`，以避免任务静默中断。
+
+---
+
+## 📚 深入架构文档
+
+| 文档 | 职责定位与内容概要 |
+|---|---|
+| [`docs/ARCHITECTURE.md`](file:///c:/Users/wjx19/Documents/GitHub/Tag-Master/docs/ARCHITECTURE.md) | 系统整体架构总览、目录职责、核心状态流、429 流控与超时状态机及防踩坑细节 |
+
 

@@ -197,4 +197,47 @@ describe('useTagProcessor', () => {
 
         unmount();
     });
+
+    it('should immediately stop and revert image status to idle when pause() is called', async () => {
+        mockGenerateCaption.mockImplementation((_file, _settings, signal?: AbortSignal) => {
+            return new Promise((_resolve, reject) => {
+                if (signal) {
+                    signal.addEventListener('abort', () => {
+                        const err = new DOMException('Aborted by user', 'AbortError');
+                        reject(err);
+                    });
+                }
+            });
+        });
+
+        const { result, unmount } = renderHook(() =>
+            useTagProcessor([mockProject], mockSettings, mockUpdateImageStatus, mockOnShowToast)
+        );
+
+        let batchPromise: Promise<void>;
+        act(() => {
+            batchPromise = result.current.startBatch('proj1', vi.fn());
+        });
+
+        expect(result.current.isProcessing).toBe(true);
+        expect(mockUpdateImageStatus).toHaveBeenCalledWith('proj1', 'img1', 'loading');
+
+        // Immediately pause
+        act(() => {
+            result.current.pause();
+        });
+
+        await act(async () => {
+            await batchPromise!;
+        });
+
+        // Processing stopped
+        expect(result.current.isProcessing).toBe(false);
+        // Image status reverted to 'idle'
+        expect(mockUpdateImageStatus).toHaveBeenLastCalledWith('proj1', 'img1', 'idle');
+        expect(mockOnShowToast).toHaveBeenCalledWith('Batch processing paused', 'info');
+
+        unmount();
+    });
 });
+

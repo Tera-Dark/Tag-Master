@@ -1,7 +1,7 @@
 
 import { AppSettings } from "../types";
 import { processImage } from "./imageProcessor";
-import { smartFetch } from "./networkUtils";
+import { smartFetch, sleepWithSignal } from "./networkUtils";
 
 export class RateLimitError extends Error {
   retryAfterSec: number;
@@ -93,11 +93,19 @@ export function isRateLimitResponse(status: number, errorMsg: string, errorData?
   );
 }
 
-const generateWithGoogle = async (file: File, settings: AppSettings): Promise<string> => {
+const generateWithGoogle = async (file: File, settings: AppSettings, signal?: AbortSignal): Promise<string> => {
+  if (signal?.aborted) {
+    throw new DOMException('Aborted by user', 'AbortError');
+  }
+
   // Use smart resizing
   const dataUrl = await processImage(file);
+  if (signal?.aborted) {
+    throw new DOMException('Aborted by user', 'AbortError');
+  }
+
   const base64Data = dataUrl.split(',')[1];
-  const model = settings.model || 'gemini-2.5-flash';
+  const model = settings.model || 'gemini-2.0-flash';
   const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${settings.apiKey}`;
 
   const payload = {
@@ -118,55 +126,84 @@ const generateWithGoogle = async (file: File, settings: AppSettings): Promise<st
     ]
   };
 
-  const response = await smartFetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  const onAbort = () => controller.abort();
+  if (signal) {
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
 
-  if (!response.ok) {
-    let errorMsg = response.statusText;
-    let errorData: ApiErrorData | null = null;
-    try {
-      errorData = await response.json() as ApiErrorData;
-      errorMsg = errorData.error?.message || JSON.stringify(errorData);
-    } catch {
-      // ignore
+  try {
+    const response = await smartFetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener('abort', onAbort);
+
+    if (!response.ok) {
+      let errorMsg = response.statusText;
+      let errorData: ApiErrorData | null = null;
+      try {
+        errorData = await response.json() as ApiErrorData;
+        errorMsg = errorData.error?.message || JSON.stringify(errorData);
+      } catch {
+        // ignore
+      }
+
+      if (isRateLimitResponse(response.status, errorMsg, errorData)) {
+        const retryAfter = parseRetryAfter(response, errorData);
+        throw new RateLimitError(`Gemini API 速率限制/配额耗尽 (429): ${errorMsg}`, retryAfter);
+      }
+
+      throw new Error(`Gemini API Error ${response.status}: ${errorMsg}`);
     }
 
-    if (isRateLimitResponse(response.status, errorMsg, errorData)) {
-      const retryAfter = parseRetryAfter(response, errorData);
-      throw new RateLimitError(`Gemini API 速率限制/配额耗尽 (429): ${errorMsg}`, retryAfter);
+    const data = await response.json();
+    
+    // Check candidates structure
+    const candidate = data.candidates?.[0];
+    if (!candidate) {
+      throw new Error("API returned no candidates.");
     }
 
-    throw new Error(`Gemini API Error ${response.status}: ${errorMsg}`);
-  }
+    if (candidate.finishReason === 'MAX_TOKENS') {
+      throw new Error("Response Truncated (Max Tokens).");
+    }
 
-  const data = await response.json();
-  
-  // Check candidates structure
-  const candidate = data.candidates?.[0];
-  if (!candidate) {
-    throw new Error("API returned no candidates.");
-  }
+    const text = candidate.content?.parts?.[0]?.text;
+    if (!text && text !== "") {
+      throw new Error("API returned an empty response.");
+    }
 
-  if (candidate.finishReason === 'MAX_TOKENS') {
-    throw new Error("Response Truncated (Max Tokens).");
+    return text || "";
+  } catch (error: unknown) {
+    clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener('abort', onAbort);
+    if (signal?.aborted) {
+      throw new DOMException('Aborted by user', 'AbortError');
+    }
+    if ((error as Error)?.name === 'AbortError') {
+      throw new Error("请求超时 (60s): 无法连接至 Google Gemini API，请检查网络连接或科学上网配置。");
+    }
+    throw error;
   }
-
-  const text = candidate.content?.parts?.[0]?.text;
-  if (!text && text !== "") {
-    throw new Error("API returned an empty response.");
-  }
-
-  return text || "";
 };
 
-const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<string> => {
+const generateWithOpenAI = async (file: File, settings: AppSettings, signal?: AbortSignal): Promise<string> => {
+  if (signal?.aborted) {
+    throw new DOMException('Aborted by user', 'AbortError');
+  }
+
   // Use smart resizing
   const imageUrl = await processImage(file);
+  if (signal?.aborted) {
+    throw new DOMException('Aborted by user', 'AbortError');
+  }
 
   const rawBaseUrl = settings.baseUrl.trim();
   const baseUrl = rawBaseUrl.replace(/\/+$/, "");
@@ -214,13 +251,21 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
     });
   }
 
-  // Retry Logic (3 attempts)
+  // Retry Logic (up to 3 attempts, but fatal errors like CORS/Auth fail fast on attempt 1)
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+    if (signal?.aborted) {
+      throw new DOMException('Aborted by user', 'AbortError');
+    }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+    const onAbort = () => controller.abort();
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    try {
       const response = await smartFetch(apiUrl, {
         method: "POST",
         headers,
@@ -228,6 +273,7 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
         signal: controller.signal
       });
       clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onAbort);
 
       if (!response.ok) {
         let errorMsg = response.statusText;
@@ -240,7 +286,7 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
         }
 
         if (response.status === 401 || response.status === 403) {
-          throw new Error(`Auth Error ${response.status}: ${errorMsg} (Check API Key)`);
+          throw new Error(`Auth Error ${response.status}: ${errorMsg} (请检查 API Key)`);
         }
 
         if (isRateLimitResponse(response.status, errorMsg, errorData)) {
@@ -265,6 +311,13 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
       return content || "";
 
     } catch (error: unknown) {
+      clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onAbort);
+
+      if (signal?.aborted) {
+        throw new DOMException('Aborted by user', 'AbortError');
+      }
+
       if (error instanceof RateLimitError) {
         // Bubble up immediately so global batch cooldown can manage it
         throw error;
@@ -274,27 +327,46 @@ const generateWithOpenAI = async (file: File, settings: AppSettings): Promise<st
       const err = error as Error;
       console.warn(`Attempt ${attempt + 1} failed:`, err.message);
 
-      // Break on fatal errors (Auth, 404, or abort)
-      if (err.message.includes('Auth Error') || err.message.includes('404')) break;
-      if (err.name === 'AbortError') throw new Error("Request Timeout (60s)");
+      // Check for CORS / Network failure (fatal on static web, will not succeed on retry)
+      const isCorsOrFetchFailed = err.name === 'TypeError' &&
+        (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'));
 
-      // Wait before retry (Exponential backoff: 1s, 2s, 4s)
-      if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      // Break immediately on fatal errors (Auth, 404, or CORS/Fetch failed)
+      if (err.message.includes('Auth Error') || err.message.includes('404') || isCorsOrFetchFailed) {
+        break;
+      }
+
+      if (err.name === 'AbortError') {
+        throw new Error("Request Timeout (60s)");
+      }
+
+      // Wait before retry (Cancellable exponential backoff: 1s, 2s)
+      if (attempt < 2 && !signal?.aborted) {
+        await sleepWithSignal(1000 * Math.pow(2, attempt), signal);
+      }
     }
   }
 
   // If we get here, all retries failed
   console.error("API Request Failed after retries:", lastError);
   const finalError = lastError as Error;
-  if (finalError.name === 'TypeError' && finalError.message.includes('Failed to fetch')) {
-    throw new Error(`Network Error: Could not connect to ${apiUrl}. Check CORS, URL, or your network.`);
+  if (finalError.name === 'TypeError' && (finalError.message.includes('Failed to fetch') || finalError.message.includes('NetworkError'))) {
+    const isWebDeploy = typeof window !== 'undefined' && window.location.protocol.startsWith('http') &&
+      !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1');
+
+    if (isWebDeploy) {
+      throw new Error(`跨域拦截 (CORS Error): 浏览器阻止了对「${apiUrl}」的请求。该服务商未开放跨域头（在 Cherry Studio 等桌面客户端中不受浏览器安全限制，因此可用；但在网页端会被浏览器拦截）。建议：1. 换用支持跨域的端点（如 Google 官方 Gemini、SiliconFlow 等）；2. 或在本地运行（npm run dev）；3. 或联系中转站开启 CORS。`);
+    } else {
+      throw new Error(`网络连接失败: 无法连接至「${apiUrl}」，请检查网络连接、端点地址或 CORS 设置。`);
+    }
   }
   throw finalError;
 };
 
 export const generateCaption = async (
   file: File,
-  settings: AppSettings
+  settings: AppSettings,
+  signal?: AbortSignal
 ): Promise<string> => {
   if (!settings.apiKey) {
     throw new Error("Please configure your API Key in Settings.");
@@ -302,12 +374,16 @@ export const generateCaption = async (
 
   try {
     if (settings.protocol === 'google') {
-      return await generateWithGoogle(file, settings);
+      return await generateWithGoogle(file, settings, signal);
     } else {
-      return await generateWithOpenAI(file, settings);
+      return await generateWithOpenAI(file, settings, signal);
     }
   } catch (error: unknown) {
-    if (error instanceof RateLimitError) {
+    if (
+      error instanceof RateLimitError ||
+      (error instanceof DOMException && error.name === 'AbortError') ||
+      (error as Error)?.name === 'AbortError'
+    ) {
       throw error;
     }
     console.error("Generation Error:", error);
@@ -315,6 +391,7 @@ export const generateCaption = async (
     throw new Error(err.message || "Failed to generate caption");
   }
 };
+
 
 // Helper to create a 1x1 pixel Transparent GIF File object
 const createDummyFile = (): File => {

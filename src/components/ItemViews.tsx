@@ -91,7 +91,10 @@ export const ImageCard = React.memo(({
                     </div>
                 )}
                 {img.status === 'error' && (
-                    <div className="bg-red-500 text-white p-1 rounded-full shadow-2xs">
+                    <div 
+                        className="bg-red-500 text-white p-1 rounded-full shadow-2xs pointer-events-auto"
+                        title={img.errorMsg ? `错误: ${img.errorMsg}` : '打标失败'}
+                    >
                         <AlertCircle className="w-3.5 h-3.5" />
                     </div>
                 )}
