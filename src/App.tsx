@@ -15,6 +15,7 @@ import { useSearch } from './hooks/useSearch';
 // Components
 import { VirtualList, VirtualGrid } from './components/VirtualViews';
 import { SettingsModal, BatchEditModal, MoveModal, TutorialModal, ExportModal, CleanModal, CreateProjectModal, EditProjectModal, DeleteProjectModal } from './components/AppModals';
+import { LogModal } from './components/modals/LogModal';
 import { ToastContainer, ToastMessage, ToastType } from './components/Toast';
 import { testConnection } from './services/geminiService';
 
@@ -53,6 +54,7 @@ const App: React.FC = () => {
 
     // --- Modal State ---
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isLogOpen, setIsLogOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isCleanModalOpen, setIsCleanModalOpen] = useState(false);
     const [isTutorialOpen, setIsTutorialOpen] = useState(false);
@@ -351,8 +353,18 @@ const App: React.FC = () => {
         }
     };
 
-    // Current Active Image for Inspector
-    const activeImageEntry = visibleImages.find(v => v.img.id === selectedId);
+    // Current Active Image for Inspector (Look in visibleImages first, fallback to all projects)
+    const activeImageEntry = useMemo(() => {
+        if (!selectedId) return null;
+        const fromVisible = visibleImages.find(v => v.img.id === selectedId);
+        if (fromVisible) return fromVisible;
+        for (const p of projects) {
+            const found = p.images.find(i => i.id === selectedId);
+            if (found) return { projId: p.id, img: found };
+        }
+        return null;
+    }, [visibleImages, projects, selectedId]);
+
     const activeImage = activeImageEntry?.img;
     const inspectorProjectId = activeImageEntry?.projId;
     const inspectorProjectObj = inspectorProjectId ? projects.find(p => p.id === inspectorProjectId) : null;
@@ -451,6 +463,7 @@ const App: React.FC = () => {
                         onPause: pause,
                         onOpenSettings: () => setIsSettingsOpen(true),
                         onOpenTutorial: () => setIsTutorialOpen(true),
+                        onOpenLog: () => setIsLogOpen(true),
                         onUpdateTriggerWord: updateProjectTriggerWord
                     }}
                 />
@@ -474,6 +487,7 @@ const App: React.FC = () => {
                                     selectionCount={multiSelection.size} visibleCount={visibleImages.length}
                                     stats={contextStats} t={t}
                                     onNext={handleNextStep}
+                                    onOpenLog={() => setIsLogOpen(true)}
                                     onStartSelected={() => {
                                         if (multiSelection.size > 0) {
                                             startBatch(activeProjectId, () => setIsSettingsOpen(true), multiSelection);
@@ -646,6 +660,7 @@ const App: React.FC = () => {
                     onConfirm={handleMoveConfirm} t={t}
                 />
                 <TutorialModal isOpen={isTutorialOpen} onClose={() => setIsTutorialOpen(false)} t={t} />
+                <LogModal isOpen={isLogOpen} onClose={() => setIsLogOpen(false)} />
                 <Lightbox
                     isOpen={!!lightboxImageId}
                     onClose={() => setLightboxImageId(null)}

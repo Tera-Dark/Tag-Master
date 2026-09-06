@@ -18,11 +18,13 @@ import {
   Video,
   Headphones,
   Sparkles,
-  ChevronDown
+  ChevronDown,
+  Edit3,
+  Palette
 } from 'lucide-react';
 import { AppSettings, AiProvider, DetectedModel, ModelCapability } from '../../../../types';
 import { fetchProviderModels, detectModelCapabilities, getModelGroup } from '../../../../services/modelDetector';
-import { AddProviderModal } from '../../AddProviderModal';
+import { ProviderModal } from '../../AddProviderModal';
 
 export interface ModelSettingsTabProps {
   localSettings: AppSettings;
@@ -43,6 +45,7 @@ export const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
 
   // Model & Provider states
   const [providerSearch, setProviderSearch] = useState('');
+  const [providerFilterTab, setProviderFilterTab] = useState<'all' | 'configured' | 'custom'>('all');
   const [modelSearch, setModelSearch] = useState('');
   const [selectedCapability, setSelectedCapability] = useState<'all' | ModelCapability>('all');
   const [isFetchingModels, setIsFetchingModels] = useState(false);
@@ -50,7 +53,13 @@ export const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
   const [customModelInput, setCustomModelInput] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [isAddProviderOpen, setIsAddProviderOpen] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<AiProvider | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
+
+  // Helper to check if a provider is a built-in system provider
+  const isSystemProvider = (p: AiProvider) => {
+    return Boolean(p.isSystem || ['google-default', 'openai-default', 'siliconflow-default'].includes(p.id));
+  };
 
   // Derived current active provider
   const currentProvider: AiProvider = useMemo(() => {
@@ -65,17 +74,51 @@ export const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
       baseUrl: localSettings.baseUrl,
       apiKey: localSettings.apiKey,
       avatar: localSettings.protocol === 'google' ? 'G' : 'O',
+      avatarBg: localSettings.protocol === 'google' ? '#1e88e5' : '#10a37f',
+      avatarColor: '#ffffff',
+      isSystem: true,
       models: []
     };
   }, [localSettings.providers, localSettings.activeProviderId, localSettings.protocol, localSettings.baseUrl, localSettings.apiKey, localSettings.providerName]);
 
-  // Filtered providers
+  // Provider category counts
+  const providerCounts = useMemo(() => {
+    const list = localSettings.providers || [];
+    return {
+      all: list.length,
+      configured: list.filter(p => Boolean(p.apiKey)).length,
+      custom: list.filter(p => !isSystemProvider(p)).length
+    };
+  }, [localSettings.providers]);
+
+  // Filtered providers with multi-field search and tab categorization
   const filteredProviders = useMemo(() => {
     const list = localSettings.providers || [];
-    if (!providerSearch.trim()) return list;
-    const query = providerSearch.toLowerCase();
-    return list.filter(p => p.name.toLowerCase().includes(query) || p.protocol.toLowerCase().includes(query));
-  }, [localSettings.providers, providerSearch]);
+    let result = list;
+
+    // Filter by tab
+    if (providerFilterTab === 'configured') {
+      result = result.filter(p => Boolean(p.apiKey));
+    } else if (providerFilterTab === 'custom') {
+      result = result.filter(p => !isSystemProvider(p));
+    }
+
+    // Filter by search query (name, protocol, url, models)
+    const query = providerSearch.trim().toLowerCase();
+    if (query) {
+      result = result.filter(p => {
+        const matchName = p.name.toLowerCase().includes(query);
+        const matchProtocol = p.protocol.toLowerCase().includes(query);
+        const matchUrl = (p.baseUrl || '').toLowerCase().includes(query);
+        const matchModels = (p.models || []).some(m =>
+          m.id.toLowerCase().includes(query) || (m.name && m.name.toLowerCase().includes(query))
+        );
+        return matchName || matchProtocol || matchUrl || matchModels;
+      });
+    }
+
+    return result;
+  }, [localSettings.providers, providerFilterTab, providerSearch]);
 
   // Provider's models
   const providerModels = useMemo(() => currentProvider.models || [], [currentProvider.models]);
@@ -157,42 +200,73 @@ export const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
     });
   };
 
-  // Add new provider
-  const handleAddProvider = (newProv: AiProvider) => {
-    setLocalSettings(s => ({
-      ...s,
-      providers: [...(s.providers || []), newProv],
-      activeProviderId: newProv.id,
-      providerName: newProv.name,
-      protocol: newProv.protocol,
-      baseUrl: newProv.baseUrl,
-      apiKey: newProv.apiKey,
-      customHeaders: newProv.customHeaders,
-      model: newProv.models && newProv.models.length > 0 ? newProv.models[0].id : s.model
-    }));
+  // Save provider (Add or Edit)
+  const handleSaveProvider = (savedProv: AiProvider) => {
+    setLocalSettings(s => {
+      const exists = (s.providers || []).some(p => p.id === savedProv.id);
+      const updatedProviders = exists
+        ? (s.providers || []).map(p => (p.id === savedProv.id ? savedProv : p))
+        : [...(s.providers || []), savedProv];
+
+      // If updating current active provider or adding a brand new provider:
+      const isCurrentActive = s.activeProviderId === savedProv.id;
+      if (isCurrentActive || !exists) {
+        return {
+          ...s,
+          providers: updatedProviders,
+          activeProviderId: savedProv.id,
+          providerName: savedProv.name,
+          protocol: savedProv.protocol,
+          baseUrl: savedProv.baseUrl,
+          apiKey: savedProv.apiKey,
+          customHeaders: savedProv.customHeaders,
+          model:
+            savedProv.models && savedProv.models.length > 0
+              ? savedProv.models.some(m => m.id === s.model)
+                ? s.model
+                : savedProv.models[0].id
+              : s.model
+        };
+      }
+
+      return {
+        ...s,
+        providers: updatedProviders
+      };
+    });
     setIsAddProviderOpen(false);
+    setEditingProvider(null);
   };
 
-  // Delete custom provider
-  const handleDeleteProvider = (e: React.MouseEvent, providerId: string) => {
-    e.stopPropagation();
+  // Delete provider (both list & modal)
+  const handleDeleteProvider = (providerId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     const target = (localSettings.providers || []).find(p => p.id === providerId);
     if (!target) return;
+    if (isSystemProvider(target)) {
+      alert('官方固定服务商不可删除');
+      return;
+    }
     if (confirm(`确定要删除服务商「${target.name}」吗？`)) {
       setLocalSettings(s => {
         const remaining = (s.providers || []).filter(p => p.id !== providerId);
         const nextActive = remaining.length > 0 ? remaining[0] : null;
+        const isActiveBeingDeleted = s.activeProviderId === providerId;
         return {
           ...s,
           providers: remaining,
-          activeProviderId: nextActive ? nextActive.id : '',
-          providerName: nextActive ? nextActive.name : '',
-          protocol: nextActive ? nextActive.protocol : s.protocol,
-          baseUrl: nextActive ? nextActive.baseUrl : s.baseUrl,
-          apiKey: nextActive ? nextActive.apiKey : '',
-          model: nextActive?.models?.[0]?.id || s.model
+          activeProviderId: isActiveBeingDeleted ? (nextActive ? nextActive.id : '') : s.activeProviderId,
+          providerName: isActiveBeingDeleted ? (nextActive ? nextActive.name : '') : s.providerName,
+          protocol: isActiveBeingDeleted ? (nextActive ? nextActive.protocol : s.protocol) : s.protocol,
+          baseUrl: isActiveBeingDeleted ? (nextActive ? nextActive.baseUrl : s.baseUrl) : s.baseUrl,
+          apiKey: isActiveBeingDeleted ? (nextActive ? nextActive.apiKey : '') : s.apiKey,
+          customHeaders: isActiveBeingDeleted ? (nextActive ? nextActive.customHeaders : undefined) : s.customHeaders,
+          model: isActiveBeingDeleted ? (nextActive?.models?.[0]?.id || s.model) : s.model
         };
       });
+      if (editingProvider?.id === providerId) {
+        setEditingProvider(null);
+      }
     }
   };
 
@@ -348,86 +422,184 @@ export const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
     <div className="flex-1 min-h-0 flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-black/[0.06] dark:divide-white/[0.08]">
       {/* Left Sub-Sidebar: Provider List */}
       <div className="w-full md:w-72 lg:w-80 shrink-0 bg-[#fafafa] dark:bg-[#151518] flex flex-col">
-        {/* Search Provider */}
-        <div className="p-3.5 border-b border-black/[0.06] dark:border-white/[0.08]">
+        {/* Search Provider & Category Filter */}
+        <div className="p-3 border-b border-black/[0.06] dark:border-white/[0.08] space-y-2.5">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
             <input
               type="text"
               value={providerSearch}
               onChange={e => setProviderSearch(e.target.value)}
-              placeholder="搜索模型平台..."
-              className="w-full pl-9 pr-3 py-2 rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1e1e22] text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white transition-all placeholder-zinc-400"
+              placeholder="搜索服务商/端点/模型..."
+              className="w-full pl-9 pr-8 py-2 rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#1e1e22] text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white transition-all placeholder-zinc-400"
             />
+            {providerSearch && (
+              <button
+                type="button"
+                onClick={() => setProviderSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                title="清空搜索"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Category Filter Tabs */}
+          <div className="flex items-center gap-1 bg-black/[0.03] dark:bg-white/[0.04] p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setProviderFilterTab('all')}
+              className={`flex-1 py-1 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
+                providerFilterTab === 'all'
+                  ? 'bg-white dark:bg-[#222226] text-zinc-900 dark:text-zinc-100 shadow-2xs'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
+              }`}
+            >
+              <span>全部</span>
+              <span className="text-[10px] opacity-70">({providerCounts.all})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setProviderFilterTab('configured')}
+              className={`flex-1 py-1 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
+                providerFilterTab === 'configured'
+                  ? 'bg-white dark:bg-[#222226] text-zinc-900 dark:text-zinc-100 shadow-2xs'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
+              }`}
+            >
+              <span>已配置</span>
+              <span className="text-[10px] opacity-70">({providerCounts.configured})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setProviderFilterTab('custom')}
+              className={`flex-1 py-1 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1 ${
+                providerFilterTab === 'custom'
+                  ? 'bg-white dark:bg-[#222226] text-zinc-900 dark:text-zinc-100 shadow-2xs'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200'
+              }`}
+            >
+              <span>自定义</span>
+              <span className="text-[10px] opacity-70">({providerCounts.custom})</span>
+            </button>
           </div>
         </div>
 
         {/* Provider Items Scroll Area */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-1.5">
-          {filteredProviders.map(p => {
-            const isSelected = p.id === currentProvider.id;
-            const isConfigured = Boolean(p.apiKey);
-            const isGlobalActive = p.id === localSettings.activeProviderId;
+          {filteredProviders.length === 0 ? (
+            <div className="py-8 px-4 text-center">
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-2">未找到匹配的服务商</p>
+              {(providerSearch || providerFilterTab !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProviderSearch('');
+                    setProviderFilterTab('all');
+                  }}
+                  className="text-xs text-blue-500 hover:underline font-medium"
+                >
+                  重置筛选条件
+                </button>
+              )}
+            </div>
+          ) : (
+            filteredProviders.map(p => {
+              const isSelected = p.id === currentProvider.id;
+              const isConfigured = Boolean(p.apiKey);
+              const isGlobalActive = p.id === localSettings.activeProviderId;
+              const isSystem = isSystemProvider(p);
 
-            return (
-              <div
-                key={p.id}
-                onClick={() => handleSelectProvider(p.id)}
-                className={`group relative p-3 rounded-2xl transition-all cursor-pointer flex items-center justify-between gap-3 ${
-                  isSelected
-                    ? 'bg-white dark:bg-[#222226] shadow-xs border border-black/[0.08] dark:border-white/[0.1]'
-                    : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.04] border border-transparent'
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  {/* Avatar */}
-                  <div className="w-9 h-9 rounded-xl bg-zinc-200 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-bold text-sm flex items-center justify-center shrink-0">
-                    {p.avatar || p.name.charAt(0)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-                        {p.name}
-                      </span>
-                      {isGlobalActive && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="当前打标服务商" />
-                      )}
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => handleSelectProvider(p.id)}
+                  className={`group relative p-2.5 rounded-2xl transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                    isSelected
+                      ? 'bg-white dark:bg-[#222226] shadow-xs border border-black/[0.08] dark:border-white/[0.1]'
+                      : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.04] border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    {/* Avatar */}
+                    <div
+                      className="w-9 h-9 rounded-xl font-bold text-sm flex items-center justify-center shrink-0 shadow-2xs transition-transform group-hover:scale-105 select-none"
+                      style={{
+                        backgroundColor: p.avatarBg || '#18181b',
+                        color: p.avatarColor || '#ffffff'
+                      }}
+                    >
+                      {p.avatar || p.name.charAt(0)}
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
-                      <span>{p.protocol === 'google' ? 'Google' : 'OpenAI'}</span>
-                      <span>·</span>
-                      <span>{p.models?.length || 0} 个模型</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                          {p.name}
+                        </span>
+                        {isSystem && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded-md font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0">
+                            官方
+                          </span>
+                        )}
+                        {isGlobalActive && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title="当前打标服务商" />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+                        <span>{p.protocol === 'google' ? 'Google' : 'OpenAI'}</span>
+                        <span>·</span>
+                        <span>{p.models?.length || 0} 个模型</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Status dot & Delete button */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span
-                    title={isConfigured ? '已配置 API Key' : '未填写 API Key'}
-                    className={`w-2 h-2 rounded-full ${isConfigured ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}
-                  />
-                  {p.id !== 'google-default' && p.id !== 'openai-default' && p.id !== 'siliconflow-default' && (
+                  {/* Actions & Status */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span
+                      title={isConfigured ? '已配置 API Key' : '未填写 API Key'}
+                      className={`w-2 h-2 rounded-full ${isConfigured ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'}`}
+                    />
+
+                    {/* Edit Provider / Avatar button */}
                     <button
                       type="button"
-                      onClick={(e) => handleDeleteProvider(e, p.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-rose-500 rounded-lg transition-opacity"
-                      title="删除此服务商"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingProvider(p);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg transition-all hover:bg-black/[0.05] dark:hover:bg-white/[0.05]"
+                      title="编辑服务商与头像外观"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Edit3 className="w-3.5 h-3.5" />
                     </button>
-                  )}
+
+                    {/* Delete Provider (non-system only) */}
+                    {!isSystem && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteProvider(p.id, e)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-rose-500 rounded-lg transition-all hover:bg-rose-500/10"
+                        title="删除此服务商"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         {/* Add Provider Button */}
         <div className="p-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-[#fafafa] dark:bg-[#151518]">
           <button
             type="button"
-            onClick={() => setIsAddProviderOpen(true)}
+            onClick={() => {
+              setEditingProvider(null);
+              setIsAddProviderOpen(true);
+            }}
             className="w-full py-2.5 px-3 rounded-xl border border-dashed border-black/[0.12] dark:border-white/[0.15] hover:border-black/[0.3] dark:border-white/[0.3] text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white text-sm font-medium transition-all flex items-center justify-center gap-2 bg-white/60 dark:bg-white/[0.02]"
           >
             <Plus className="w-4 h-4" />
@@ -440,20 +612,64 @@ export const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
       <div className="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-6 space-y-6 bg-white dark:bg-[#18181b]">
         {/* Provider Header Banner */}
         <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.08]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 font-bold text-base flex items-center justify-center">
-              {currentProvider.avatar || currentProvider.name.charAt(0)}
+          <div className="flex items-center gap-3.5">
+            {/* Clickable Avatar with Color Indicator */}
+            <div className="relative group">
+              <div
+                className="w-11 h-11 rounded-2xl font-bold text-lg flex items-center justify-center shadow-xs select-none transition-transform"
+                style={{
+                  backgroundColor: currentProvider.avatarBg || '#18181b',
+                  color: currentProvider.avatarColor || '#ffffff'
+                }}
+              >
+                {currentProvider.avatar || currentProvider.name.charAt(0)}
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingProvider(currentProvider)}
+                className="absolute -bottom-1 -right-1 p-1 rounded-full bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/15 shadow-xs text-zinc-500 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white hover:scale-110 transition-transform"
+                title="修改服务商外观与头像颜色"
+              >
+                <Palette className="w-3 h-3" />
+              </button>
             </div>
+
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
                   {currentProvider.name}
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-black/[0.06] dark:bg-white/[0.08] text-zinc-600 dark:text-zinc-300">
-                  {currentProvider.protocol === 'google' ? 'Google Gemini 官方' : 'OpenAI 兼容端点'}
-                </span>
+                {isSystemProvider(currentProvider) ? (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                    官方预设
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                    自定义
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setEditingProvider(currentProvider)}
+                  className="px-2 py-0.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.05] transition-colors flex items-center gap-1 border border-black/[0.06] dark:border-white/[0.08]"
+                  title="编辑服务商信息与外观"
+                >
+                  <Edit3 className="w-3 h-3" />
+                  <span>编辑</span>
+                </button>
+                {!isSystemProvider(currentProvider) && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteProvider(currentProvider.id)}
+                    className="px-2 py-0.5 rounded-lg text-xs font-medium text-rose-500 hover:bg-rose-500/10 transition-colors flex items-center gap-1 border border-rose-500/20"
+                    title="删除此服务商"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>删除</span>
+                  </button>
+                )}
               </div>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500">
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
                 {currentProvider.protocol === 'google'
                   ? '原生 Google AI Studio 多模态协议'
                   : '支持 OpenAI、SiliconFlow、Ollama、OpenRouter 等兼容接口'}
@@ -970,12 +1186,17 @@ export const ModelSettingsTab: React.FC<ModelSettingsTabProps> = ({
         </div>
       </div>
 
-      {/* Add Provider Modal */}
-      {isAddProviderOpen && (
-        <AddProviderModal
-          isOpen={isAddProviderOpen}
-          onClose={() => setIsAddProviderOpen(false)}
-          onAddProvider={handleAddProvider}
+      {/* Provider Add/Edit Modal */}
+      {(isAddProviderOpen || Boolean(editingProvider)) && (
+        <ProviderModal
+          isOpen={isAddProviderOpen || Boolean(editingProvider)}
+          onClose={() => {
+            setIsAddProviderOpen(false);
+            setEditingProvider(null);
+          }}
+          initialProvider={editingProvider}
+          onSaveProvider={handleSaveProvider}
+          onDeleteProvider={(id) => handleDeleteProvider(id)}
         />
       )}
     </div>

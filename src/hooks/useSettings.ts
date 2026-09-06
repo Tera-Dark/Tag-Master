@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AppSettings, DEFAULT_PROMPT, AiProvider } from '../types';
+import { AppSettings, DEFAULT_PROMPT, AiProvider, PROMPT_MODE_A, PROMPT_MODE_B, PROMPT_MODE_C, PROMPT_MODE_D } from '../types';
 import { useTranslation } from 'react-i18next';
 
 const STORAGE_KEY = 'lora-tag-master-settings-v9';
@@ -12,6 +12,9 @@ const DEFAULT_PROVIDERS: AiProvider[] = [
     baseUrl: 'https://generativelanguage.googleapis.com',
     apiKey: '',
     avatar: 'G',
+    avatarBg: '#1e88e5',
+    avatarColor: '#ffffff',
+    isSystem: true,
     models: [
       {
         id: 'gemini-2.0-flash',
@@ -46,6 +49,9 @@ const DEFAULT_PROVIDERS: AiProvider[] = [
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',
     avatar: 'O',
+    avatarBg: '#10a37f',
+    avatarColor: '#ffffff',
+    isSystem: true,
     models: [
       {
         id: 'gpt-4o',
@@ -74,6 +80,9 @@ const DEFAULT_PROVIDERS: AiProvider[] = [
     baseUrl: 'https://api.siliconflow.cn/v1',
     apiKey: '',
     avatar: '硅',
+    avatarBg: '#6366f1',
+    avatarColor: '#ffffff',
+    isSystem: true,
     models: [
       {
         id: 'Qwen/Qwen2.5-VL-72B-Instruct',
@@ -128,16 +137,50 @@ const clampColumns = (cols?: number): number => {
 // Helper to resolve active prompt and auto-upgrade legacy prompts
 const resolveActivePrompt = (parsedPrompt?: string): string => {
   if (!parsedPrompt) return DEFAULT_PROMPT;
-  // Auto-upgrade legacy v1 prompts to Visual Prompt Compiler v2.0 Mode D
+  // Auto-upgrade legacy v1, v2.0, and pre-medusa v2.1 prompts to the gold standard
   if (
-    parsedPrompt.includes('Analyze this image for a LoRA training dataset. Provide a hybrid description') ||
+    parsedPrompt.includes('Visual Prompt Compiler v2.0') ||
+    (parsedPrompt.includes('Visual Prompt Compiler v2.1') && !parsedPrompt.includes('medusa')) ||
+    parsedPrompt.includes('Analyze this image for a LoRA training dataset') ||
     parsedPrompt.includes('default-danbooru') ||
     parsedPrompt.includes('default-caption') ||
     parsedPrompt.includes('default-optimal')
   ) {
+    if (parsedPrompt.includes('Mode A') || parsedPrompt.includes('Tag Group') || parsedPrompt.includes('Tag + Natural Language')) return PROMPT_MODE_A;
+    if (parsedPrompt.includes('Mode B')) return PROMPT_MODE_B;
+    if (parsedPrompt.includes('Mode C')) return PROMPT_MODE_C;
+    if (parsedPrompt.includes('Mode D')) return PROMPT_MODE_D;
     return DEFAULT_PROMPT;
   }
   return parsedPrompt;
+};
+
+const ensureProviderDefaults = (providers: AiProvider[]): AiProvider[] => {
+  return providers.map(p => {
+    let avatarBg = p.avatarBg;
+    const avatarColor = p.avatarColor || '#ffffff';
+    let isSystem = p.isSystem;
+
+    if (p.id === 'google-default') {
+      avatarBg = avatarBg || '#1e88e5';
+      isSystem = true;
+    } else if (p.id === 'openai-default') {
+      avatarBg = avatarBg || '#10a37f';
+      isSystem = true;
+    } else if (p.id === 'siliconflow-default') {
+      avatarBg = avatarBg || '#6366f1';
+      isSystem = true;
+    } else if (!avatarBg) {
+      avatarBg = '#18181b';
+    }
+
+    return {
+      ...p,
+      avatarBg,
+      avatarColor,
+      isSystem: Boolean(isSystem)
+    };
+  });
 };
 
 export const useSettings = () => {
@@ -148,7 +191,7 @@ export const useSettings = () => {
       try {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          const mergedProviders = parsed.providers?.length ? parsed.providers : DEFAULT_PROVIDERS;
+          const mergedProviders = ensureProviderDefaults(parsed.providers?.length ? parsed.providers : DEFAULT_PROVIDERS);
           return {
             ...DEFAULT_SETTINGS,
             ...parsed,
@@ -171,7 +214,7 @@ export const useSettings = () => {
         }
         const decoded = new TextDecoder().decode(bytes);
         const parsed = JSON.parse(decoded);
-        const mergedProviders = parsed.providers?.length ? parsed.providers : DEFAULT_PROVIDERS;
+        const mergedProviders = ensureProviderDefaults(parsed.providers?.length ? parsed.providers : DEFAULT_PROVIDERS);
         return {
           ...DEFAULT_SETTINGS,
           ...parsed,

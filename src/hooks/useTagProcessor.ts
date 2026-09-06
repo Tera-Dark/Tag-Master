@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Project, AppSettings, TagImage } from '../types';
 import { generateCaption, RateLimitError } from '../services/geminiService';
 import { sleepWithSignal } from '../services/networkUtils';
+import { appLogger } from '../services/loggerService';
 
 export const useTagProcessor = (
     projects: Project[],
@@ -16,6 +17,7 @@ export const useTagProcessor = (
     const lastRequestTimeRef = useRef<number>(0);
     const queueRef = useRef<{ projId: string; imgId: string }[]>([]);
     const activeAbortControllerRef = useRef<AbortController | null>(null);
+    const activeSingleProcessingIdsRef = useRef<Set<string>>(new Set());
 
     // We use a ref to track current projects state without re-triggering the effect loop constantly
     const projectsRef = useRef(projects);
@@ -28,6 +30,20 @@ export const useTagProcessor = (
     useEffect(() => {
         settingsRef.current = settings;
     }, [settings]);
+
+    // Auto-healing: If not batch processing, ensure no images remain stuck in 'loading'
+    useEffect(() => {
+        if (!isProcessing) {
+            projectsRef.current.forEach(project => {
+                project.images.forEach(img => {
+                    if (img.status === 'loading' && !activeSingleProcessingIdsRef.current.has(img.id)) {
+                        appLogger.warn(`检测到未决加载状态图片「${img.file.name}」，已自动恢复为待处理(idle)状态`);
+                        updateImageStatus(project.id, img.id, 'idle');
+                    }
+                });
+            });
+        }
+    }, [isProcessing, updateImageStatus]);
 
     // Cleanup abort controller on unmount
     useEffect(() => {
@@ -64,8 +80,14 @@ export const useTagProcessor = (
             const regex = new RegExp(`\\b${word}\\b`, 'gi');
             filtered = filtered.replace(regex, '');
         });
-        // Clean up double commas/spaces
-        return filtered.replace(/,\s*,/g, ',').replace(/\s\s+/g, ' ').trim().replace(/^,/, '').replace(/,$/, '');
+        // Clean up double commas and excess horizontal spaces without collapsing newlines
+        return filtered
+            .replace(/,[^\S\r\n]*,/g, ',')
+            .replace(/[^\S\r\n]{2,}/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim()
+            .replace(/^,\s*/, '')
+            .replace(/\s*,$/, '');
     };
 
     const getTargetInterval = (currSettings: AppSettings): number => {
@@ -89,13 +111,14 @@ export const useTagProcessor = (
         }
 
         updateImageStatus(projId, imgId, 'loading');
+        appLogger.info(`[请求中] 正在为「${img.file.name}」生成打标描述...`);
 
         let caption = '';
         let attempts = 0;
         const maxAttempts = 3;
 
         while (attempts < maxAttempts) {
-            if (shouldStopRef.current || signal?.aborted) {
+            if (signal?.aborted) {
                 const abortErr = new Error('Processing aborted');
                 abortErr.name = 'AbortError';
                 throw abortErr;
@@ -107,7 +130,7 @@ export const useTagProcessor = (
                     : await generateCaption(img.file, currentSettings);
                 break; // Success
             } catch (error: unknown) {
-                if (shouldStopRef.current || signal?.aborted) {
+                if (signal?.aborted) {
                     const abortErr = new Error('Processing aborted');
                     abortErr.name = 'AbortError';
                     throw abortErr;
@@ -131,10 +154,18 @@ export const useTagProcessor = (
                     errMsg.includes('CORS') ||
                     errMsg.includes('跨域') ||
                     errMsg.includes('Failed to fetch') ||
-                    errMsg.includes('NetworkError');
+                    errMsg.includes('NetworkError') ||
+                    errMsg.includes('SAFETY') ||
+                    errMsg.includes('安全') ||
+                    errMsg.includes('审查') ||
+                    errMsg.includes('RECITATION') ||
+                    errMsg.includes('Max Tokens') ||
+                    errMsg.includes('超时') ||
+                    errMsg.includes('Timeout');
 
-                if (attempts < maxAttempts && !isFatal && !shouldStopRef.current && !signal?.aborted) {
+                if (attempts < maxAttempts && !isFatal && !signal?.aborted) {
                     const delay = attempts * 2500;
+                    appLogger.warn(`[重试等待] 「${img.file.name}」将在 ${delay / 1000} 秒后进行第 ${attempts + 1} 次重试...`, errMsg);
                     onShowToast?.(`Retrying ${img.file.name} in ${delay / 1000}s... (${attempts}/${maxAttempts})`, 'info');
                     const isTestEnv = typeof globalThis !== 'undefined' &&
                         'process' in globalThis &&
@@ -145,6 +176,7 @@ export const useTagProcessor = (
                         await sleepWithSignal(delay, signal);
                     }
                 } else {
+                    appLogger.error(`[打标失败] 「${img.file.name}」: ${errMsg}`, isFatal ? '检测到不可恢复错误（内容审查拦截/请求超时/鉴权/网络），已快速停止重试' : `已连续重试 ${attempts} 次失败`);
                     throw error;
                 }
             }
@@ -184,8 +216,14 @@ export const useTagProcessor = (
             caption = `${trigger}, ${caption}`;
         }
 
-        // Cleanup comma mess
-        caption = caption.replace(/,\s*,/g, ',').replace(/\s\s+/g, ' ').trim().replace(/^,/, '').replace(/,$/, '');
+        // Cleanup comma mess and excess spaces without collapsing paragraph breaks
+        caption = caption
+            .replace(/,[^\S\r\n]*,/g, ',')
+            .replace(/[^\S\r\n]{2,}/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim()
+            .replace(/^,\s*/, '')
+            .replace(/\s*,$/, '');
         return caption;
     }, [updateImageStatus, onShowToast]);
 
@@ -194,27 +232,45 @@ export const useTagProcessor = (
         const img = currentProject?.images.find(i => i.id === imgId);
         if (!currentProject || !img) return false;
 
+        const currentSettings = settingsRef.current;
+        if (!currentSettings.apiKey) {
+            appLogger.error('打标失败: 请先在「服务商设置」中填写并配置 API Key');
+            onShowToast?.('请先在「服务商设置」中填写并配置 API Key', 'error');
+            return false;
+        }
+
+        const previousStatus = img.status;
+        const previousCaption = img.caption;
+
+        activeSingleProcessingIdsRef.current.add(imgId);
+        appLogger.info(`开始单张打标: 「${img.file.name}」`);
         try {
-            const caption = await processImageCaption(projId, imgId, settings);
+            const caption = await processImageCaption(projId, imgId, currentSettings);
             updateImageStatus(projId, imgId, 'success', undefined, caption);
+            appLogger.success(`「${img.file.name}」打标成功`, caption);
             onShowToast?.(`Tagged: ${img.file.name}`, 'success');
             return true;
         } catch (error: unknown) {
             if ((error as Error)?.name === 'AbortError') {
-                updateImageStatus(projId, imgId, 'idle');
+                appLogger.info(`「${img.file.name}」打标已取消`);
+                updateImageStatus(projId, imgId, previousStatus, undefined, previousCaption);
                 return false;
             }
             const err = error as Error;
             if (error instanceof RateLimitError) {
+                appLogger.warn(`「${img.file.name}」触发 API 速率限制 (429): 请等待 ${error.retryAfterSec}s 后重试`, err.message);
                 updateImageStatus(projId, imgId, 'error', `API 速率限制 (429): 请等待 ${error.retryAfterSec}s 后重试`);
                 onShowToast?.(`⚠️ API 速率限制 (5 RPM): 请等待 ${error.retryAfterSec}s 后重试`, 'error');
             } else {
+                appLogger.error(`「${img.file.name}」打标失败`, err.message);
                 updateImageStatus(projId, imgId, 'error', err.message);
                 onShowToast?.(`Failed: ${img.file.name}`, 'error');
             }
             return false;
+        } finally {
+            activeSingleProcessingIdsRef.current.delete(imgId);
         }
-    }, [settings, updateImageStatus, onShowToast, processImageCaption]);
+    }, [updateImageStatus, onShowToast, processImageCaption]);
 
     const handleBatchTag = useCallback(async (
         targetProjectId: string | 'all',
@@ -242,10 +298,14 @@ export const useTagProcessor = (
             ? projectsRef.current
             : projectsRef.current.filter(p => p.id === targetProjectId);
 
+        const isTargetedSelection = !!(selectedIds && selectedIds.size > 0);
         targetProjects.forEach(p => {
             p.images.forEach(img => {
-                const isSelected = selectedIds && selectedIds.size > 0 ? selectedIds.has(img.id) : true;
-                if (isSelected && (img.status === 'idle' || img.status === 'error')) {
+                const isSelected = isTargetedSelection ? selectedIds.has(img.id) : true;
+                const shouldInclude = isTargetedSelection
+                    ? isSelected
+                    : (img.status === 'idle' || img.status === 'error' || img.status === 'loading');
+                if (shouldInclude) {
                     initialQueue.push({ projId: p.id, imgId: img.id });
                 }
             });
@@ -270,6 +330,8 @@ export const useTagProcessor = (
             : (settings.rateLimitPreset === 'google_15rpm'
                 ? 1
                 : Math.max(1, Math.min(20, settings.concurrency || 3)));
+
+        appLogger.info(`开始批量打标任务: 队列中待处理 ${initialQueue.length} 张图片，并发数 ${effectiveConcurrency}`);
 
         let consecutiveErrors = 0;
 
@@ -326,6 +388,7 @@ export const useTagProcessor = (
                 if (typeof navigator !== 'undefined' && !navigator.onLine) {
                     queueRef.current.unshift(task);
                     shouldStopRef.current = true;
+                    appLogger.warn('网络离线，打标任务已挂起');
                     onShowToast?.('Network offline. Processing suspended.', 'error');
                     break;
                 }
@@ -337,7 +400,10 @@ export const useTagProcessor = (
                 try {
                     const caption = await processImageCaption(task.projId, task.imgId, settingsRef.current, abortController.signal);
                     updateImageStatus(task.projId, task.imgId, 'success', undefined, caption);
-                    if (img) onShowToast?.(`Tagged: ${img.file.name}`, 'success');
+                    if (img) {
+                        appLogger.success(`「${img.file.name}」打标成功`, caption);
+                        onShowToast?.(`Tagged: ${img.file.name}`, 'success');
+                    }
                     consecutiveErrors = 0;
                 } catch (error: unknown) {
                     const isUserAborted = shouldStopRef.current || abortController.signal.aborted;
@@ -361,6 +427,7 @@ export const useTagProcessor = (
                         if (targetUntil > coolingUntilRef.current) {
                             coolingUntilRef.current = targetUntil;
                             setCoolingRemainingSec(waitSec);
+                            appLogger.warn(`[速率限流] 触发 API 限制 (5次/分或 Token 配额耗尽)，排队冷却 ${waitSec}s...`, `图片: ${img?.file.name || task.imgId}，将在冷却后自动继续请求`);
                             onShowToast?.(`⚠️ 触发 API 限制 (5次/分或Token配额耗尽)，正在自动排队轮询... ${waitSec}s 后自动恢复`, 'info');
                         }
                         // Note: do NOT increment consecutiveErrors!
@@ -368,12 +435,16 @@ export const useTagProcessor = (
                         // Standard error
                         const err = error as Error;
                         updateImageStatus(task.projId, task.imgId, 'error', err.message);
-                        if (img) onShowToast?.(`Failed: ${img.file.name}`, 'error');
+                        if (img) {
+                            appLogger.error(`「${img.file.name}」打标失败: ${err.message}`);
+                            onShowToast?.(`Failed: ${img.file.name}`, 'error');
+                        }
                         consecutiveErrors++;
                         if (consecutiveErrors >= 5) {
                             shouldStopRef.current = true;
                             abortController.abort();
-                            onShowToast?.('Multiple consecutive errors. Batch paused. Please check API Config.', 'error');
+                            appLogger.error('连续 5 次请求出错，批量任务已自动熔断暂停。请检查 API 配置或网络，点击「运行日志」查看详细错误。');
+                            onShowToast?.('连续多次请求出错，已自动暂停。请查看「运行日志」排查原因。', 'error');
                             break;
                         }
                     }
@@ -392,13 +463,16 @@ export const useTagProcessor = (
         }
 
         if (!shouldStopRef.current && !abortController.signal.aborted) {
+            appLogger.success('🎉 批量打标任务已全部完成！');
             onShowToast?.('Batch processing complete', 'success');
         } else {
+            appLogger.info('批量打标任务已暂停/停止');
             onShowToast?.('Batch processing paused', 'info');
         }
     }, [settings, updateImageStatus, onShowToast, processImageCaption]);
 
     const pause = useCallback(() => {
+        appLogger.info('用户手动暂停了打标任务');
         shouldStopRef.current = true;
         coolingUntilRef.current = 0;
         setCoolingRemainingSec(0);
@@ -406,7 +480,15 @@ export const useTagProcessor = (
             activeAbortControllerRef.current.abort();
             activeAbortControllerRef.current = null;
         }
-    }, []);
+        // Immediately restore any image stuck in 'loading' back to 'idle'
+        projectsRef.current.forEach(p => {
+            p.images.forEach(img => {
+                if (img.status === 'loading' && !activeSingleProcessingIdsRef.current.has(img.id)) {
+                    updateImageStatus(p.id, img.id, 'idle');
+                }
+            });
+        });
+    }, [updateImageStatus]);
 
     const skipCooldown = useCallback(() => {
         coolingUntilRef.current = 0;

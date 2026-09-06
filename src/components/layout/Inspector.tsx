@@ -47,9 +47,11 @@ export const Inspector: React.FC<InspectorProps> = ({
         images.forEach(item => {
             const img = item.img;
             if (img.caption && img.status === 'success') {
-                const tags = img.caption.split(',')
+                // If caption contains natural language paragraph separated by newlines, take only the tag block
+                const tagPart = img.caption.split(/\n\s*\n/)[0];
+                const tags = tagPart.split(',')
                     .map(t => t.trim().toLowerCase())
-                    .filter(t => t.length > 0);
+                    .filter(t => t.length > 0 && t.length < 50 && !t.endsWith('.'));
 
                 tags.forEach(t => {
                     counts[t] = (counts[t] || 0) + 1;
@@ -188,9 +190,19 @@ export const Inspector: React.FC<InspectorProps> = ({
                                     onClick={onRegen}
                                     disabled={activeImage.status === 'loading'}
                                     className="text-sm font-medium flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 disabled:opacity-40 transition-colors px-2.5 py-1 rounded-lg hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                                    title="重新生成提示词"
                                 >
-                                    {activeImage.status === 'loading' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                                    {t('regen')}
+                                    {activeImage.status === 'loading' ? (
+                                        <>
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-500" />
+                                            <span>生成中...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Wand2 className="w-3.5 h-3.5" />
+                                            <span>{t('regen')}</span>
+                                        </>
+                                    )}
                                 </button>
                             </div>
                             <textarea

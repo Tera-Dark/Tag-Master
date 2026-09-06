@@ -29,7 +29,7 @@ export const useProjectManager = () => {
                     images: p.images.map(img => ({
                         ...img,
                         previewUrl: img.file ? URL.createObjectURL(img.file) : '',
-                        status: img.status || 'idle'
+                        status: img.status === 'loading' ? 'idle' : (img.status || 'idle')
                     }))
                 }));
                 setProjects(loaded);

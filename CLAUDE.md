@@ -62,6 +62,14 @@
     - 批处理暂停必须基于 `AbortController` 深度绑定底层 `fetch` 与中断式休眠 `sleepWithSignal`，确保用户点击「暂停」时毫秒级停止，在途请求图片优雅回滚为 `idle`。
     - **红线**：严禁将底层请求 60s 产生的网络超时 `AbortError` 混同为用户主动点击暂停。只有 `userAbortSignal.aborted === true` 或 `shouldStopRef.current === true` 时才允许退出 Worker 并标记暂停；对于网络超时，必须抛出显式超时异常并在图片上标记 `error`，以避免任务静默中断。
 
+11. **单张生成与批量停止锁隔离规范 (Single Regeneration & Batch Isolation)**：
+    - 单张打标/重新生成（`handleTagSingle`）是独立的即时操作，**严禁受批量控制锁（`shouldStopRef`）干扰或阻塞**；底层生成逻辑只响应专属的 `AbortSignal`。
+    - **红线**：对已有结果重新生成时，必须先对原状态与提示词进行快照备份；若遇到异常或未配置 Key，必须无损回滚原有状态，严禁将原有的 `success`（绿勾标）误刷为 `idle`。
+
+12. **服务商预设保护与动态色彩规范 (Provider Defaults & Color Safety)**：
+    - 官方预设服务商（Google Gemini、OpenAI、SiliconFlow）带有 `isSystem: true`，严禁允许用户物理删除。
+    - 服务商头像 Hex 背景色必须使用 Inline Style 渲染以稳定支持 1677 万任意色（Tailwind JIT 无法预编译任意动态 Hex 类名），并根据背景色亮度算法动态计算前景色（黑/白），确保文字在任何底色下均清晰可读。
+
 ---
 
 ## 📚 深入架构文档

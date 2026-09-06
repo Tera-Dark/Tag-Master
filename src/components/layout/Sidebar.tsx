@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, MoreVertical, FolderPlus } from 'lucide-react';
+import { Plus, Pencil, MoreVertical, FolderPlus, Terminal } from 'lucide-react';
 import { AppSettings, Project } from '../../types';
+import { useAppLogs } from '../../services/loggerService';
 import {
     Wand2, HelpCircle, Upload, Archive, LayoutGrid, Folder, Merge,
     Play, Pause, Settings, CheckCircle, Trash2, Download, Tags
@@ -30,6 +31,7 @@ export interface SidebarProps {
         onPause: () => void;
         onOpenSettings: () => void;
         onOpenTutorial: () => void;
+        onOpenLog?: () => void;
         onUpdateTriggerWord: (id: string, word: string) => void;
     };
     fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -50,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     fileInputRef,
     t
 }) => {
+    const { errorCount } = useAppLogs();
     const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
     const [editingName, setEditingName] = useState('');
     const [openMenuProjectId, setOpenMenuProjectId] = useState<string | null>(null);
@@ -460,7 +463,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </div>
 
                     {/* Settings and status */}
-                    <div className="flex gap-2.5">
+                    <div className="flex gap-2">
                         <button 
                             onClick={handlers.onOpenSettings} 
                             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-black/[0.06] dark:border-white/[0.08] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-sm font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
@@ -468,6 +471,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             <Settings className="w-4 h-4 text-zinc-500" />
                             {t('settings')}
                         </button>
+                        {handlers.onOpenLog && (
+                            <button
+                                onClick={handlers.onOpenLog}
+                                className={`relative px-3 py-2.5 rounded-xl border transition-colors flex items-center justify-center cursor-pointer ${
+                                    errorCount > 0
+                                        ? 'bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500/20'
+                                        : 'bg-black/[0.03] dark:bg-white/[0.04] border-black/[0.04] dark:border-white/[0.06] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                                }`}
+                                title="任务运行与错误日志"
+                            >
+                                <Terminal className="w-4 h-4" />
+                                {errorCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white dark:ring-[#171717] animate-pulse">
+                                        {errorCount}
+                                    </span>
+                                )}
+                            </button>
+                        )}
                         <div className="px-3.5 py-2.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.04] dark:border-white/[0.06] flex items-center justify-center" title="Saved">
                             <CheckCircle className="w-4 h-4 text-emerald-500" />
                         </div>

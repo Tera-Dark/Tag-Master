@@ -239,5 +239,149 @@ describe('useTagProcessor', () => {
 
         unmount();
     });
+
+    it('should process image even if it was previously stuck in loading state when explicitly selected', async () => {
+        mockGenerateCaption.mockResolvedValue('a cat, sitting');
+
+        const stuckImage: TagImage = {
+            id: 'stuck1',
+            file: new File([''], 'stuck.png', { type: 'image/png' }),
+            previewUrl: 'blob:stuck',
+            caption: '',
+            status: 'loading', // Image stuck in loading
+        };
+
+        const stuckProj: Project = {
+            id: 'proj_stuck',
+            name: 'Stuck Project',
+            images: [stuckImage],
+            status: 'idle',
+        };
+
+        const localUpdateStatus = vi.fn((_pId, _iId, status) => {
+            stuckImage.status = status;
+        });
+
+        const { result, unmount } = renderHook(() =>
+            useTagProcessor([stuckProj], mockSettings, localUpdateStatus, mockOnShowToast)
+        );
+
+        // User explicitly selects the stuck image and clicks tag
+        await act(async () => {
+            await result.current.startBatch('proj_stuck', vi.fn(), new Set(['stuck1']));
+        });
+
+        // The image must be successfully processed and updated to success
+        expect(localUpdateStatus).toHaveBeenCalledWith('proj_stuck', 'stuck1', 'loading');
+        expect(localUpdateStatus).toHaveBeenLastCalledWith(
+            'proj_stuck',
+            'stuck1',
+            'success',
+            undefined,
+            'a cat, sitting'
+        );
+
+        unmount();
+    });
+
+    it('should auto-heal orphaned loading images to idle when idle', async () => {
+        const orphanImage: TagImage = {
+            id: 'orphan1',
+            file: new File([''], 'orphan.png', { type: 'image/png' }),
+            previewUrl: 'blob:orphan',
+            caption: '',
+            status: 'loading',
+        };
+
+        const orphanProj: Project = {
+            id: 'proj_orphan',
+            name: 'Orphan Project',
+            images: [orphanImage],
+            status: 'idle',
+        };
+
+        const { unmount } = renderHook(() =>
+            useTagProcessor([orphanProj], mockSettings, mockUpdateImageStatus, mockOnShowToast)
+        );
+
+        // Auto-healing effect should have fired
+        expect(mockUpdateImageStatus).toHaveBeenCalledWith('proj_orphan', 'orphan1', 'idle');
+
+        unmount();
+    });
+
+    it('should preserve multi-line Tag + NL format with blank line separation and apply trigger word', async () => {
+        const tagNlCaption = `1girl, solo, medusa, monster girl, white hair, snake hair\n\nA delicate and ethereal character design of a pale Medusa girl sitting on a giant snake.`;
+        mockGenerateCaption.mockResolvedValue(tagNlCaption);
+
+        const projWithTrigger: Project = {
+            id: 'proj_tag_nl',
+            name: 'Tag NL Project',
+            images: [mockImage],
+            status: 'idle',
+            triggerWord: 'medusa_style',
+        };
+
+        const { result, unmount } = renderHook(() =>
+            useTagProcessor([projWithTrigger], { ...mockSettings, replacementRules: [] }, mockUpdateImageStatus, mockOnShowToast)
+        );
+
+        await act(async () => {
+            await result.current.processSingle('proj_tag_nl', 'img1');
+        });
+
+        const expected = `medusa_style, 1girl, solo, medusa, monster girl, white hair, snake hair\n\nA delicate and ethereal character design of a pale Medusa girl sitting on a giant snake.`;
+
+        expect(mockUpdateImageStatus).toHaveBeenLastCalledWith(
+            'proj_tag_nl',
+            'img1',
+            'success',
+            undefined,
+            expected
+        );
+
+        unmount();
+    });
+
+    it('should successfully regenerate single image even after batch was paused and preserve success status', async () => {
+        mockGenerateCaption.mockResolvedValue('regenerated caption, high quality, masterpiece');
+
+        const taggedImage: TagImage = {
+            ...mockImage,
+            status: 'success',
+            caption: 'old caption'
+        };
+        const taggedProj: Project = {
+            ...mockProject,
+            images: [taggedImage]
+        };
+
+        const { result, unmount } = renderHook(() =>
+            useTagProcessor([taggedProj], { ...mockSettings, replacementRules: [], blockedWords: [] }, mockUpdateImageStatus, mockOnShowToast)
+        );
+
+        // Simulate user clicking pause on batch
+        act(() => {
+            result.current.pause();
+        });
+
+        // Now user clicks regenerate on this single tagged image
+        await act(async () => {
+            const ok = await result.current.processSingle('proj1', 'img1');
+            expect(ok).toBe(true);
+        });
+
+        // Verify it was set to loading then success with new caption
+        expect(mockUpdateImageStatus).toHaveBeenCalledWith('proj1', 'img1', 'loading');
+        expect(mockUpdateImageStatus).toHaveBeenLastCalledWith(
+            'proj1',
+            'img1',
+            'success',
+            undefined,
+            'test_trigger, regenerated caption, high quality, masterpiece'
+        );
+
+        unmount();
+    });
 });
 

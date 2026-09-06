@@ -1,4 +1,4 @@
-﻿# Tag-Master 系统架构与技术实现指南 (Architecture Guide)
+# Tag-Master 系统架构与技术实现指南 (Architecture Guide)
 
 本文档面向后续维护者（人类开发者与 AI Agent），提供 Tag-Master 的整体软件架构、核心数据流、关键机制以及开发防雷指引。
 
@@ -12,7 +12,7 @@ Tag-Master 是一个纯前端运行、离线可用的 AI 数据集管理与打�
 src/
 ├── components/          # UI 组件层（已全面单一职责解耦）
 │   ├── layout/          # 主工作区布局 (Sidebar, SmartToolbar, Inspector)
-│   ├── modals/          # 弹窗体系 (Export, BatchEdit, Move, Tutorial)
+│   ├── modals/          # 弹窗体系 (Export, BatchEdit, Move, LogModal, AddProviderModal)
 │   │   └── settings/    # 设置中心 Tab (ModelSettingsTab, PromptSettingsTab, GeneralSettingsTab)
 │   ├── workflow/        # 核心预处理与打标流水线 (CropEditor, PreprocessView, ReviewView)
 │   └── ItemViews.tsx    # 网格卡片 (ImageCard) 与列表项 (ListItem)
@@ -20,9 +20,12 @@ src/
 │   ├── useProjectManager.ts    # 项目与图片增删改查、触发词管理
 │   ├── useSelectionManager.ts  # 多选框选、范围选择、全选逻辑
 │   ├── useSettings.ts          # 模型预设、列数与配置持久化
-│   └── useTagProcessor.ts      # 批量打标并发调度器、速率限制冷却、即时暂停
+│   ├── useSearch.ts            # 多维度模糊搜索与状态筛选
+│   └── useTagProcessor.ts      # 批量打标并发调度器、速率限制冷却、单张/批量隔离
 ├── services/            # 纯逻辑无状态服务层
 │   ├── geminiService.ts        # Google / OpenAI 双协议 Payload 构造与 429 解析
+│   ├── modelDetector.ts        # 端点模型自动探测与 6 维多模态能力推断
+│   ├── loggerService.ts        # 内存运行日志追踪与实时诊断服务
 │   ├── imageProcessor.ts       # OffscreenCanvas 非阻塞图像智能尺寸压缩
 │   ├── networkUtils.ts         # 智能 Fetch 与可中断休眠 sleepWithSignal
 │   ├── storageService.ts       # IndexedDB 增量差异化存储引擎
@@ -77,6 +80,21 @@ graph TD
 ### 3.4 图像内存回收规范 (Memory Leak Prevention)
 * 导入图片时通过 `URL.createObjectURL(file)` 创建瞬时预览链接；
 * 在 `removeImages`、`deleteProject`、`clearDone` 或重新裁剪生成新图片时，**必须显式调用 `URL.revokeObjectURL(previewUrl)`** 释放系统内存，避免处理千张图片时浏览器崩溃。
+
+### 3.5 单张重新生成与批量任务的生命周期隔离 (Single Regeneration & Batch Isolation)
+* **设计背景**：批量打标采用队列 Worker 消费机制，使用 `shouldStopRef` 控制退出循环。若底层生成函数混入该标志，会导致批量暂停后，单张图片的重新生成被误判为中止并丢失标注状态。
+* **隔离设计**：
+  * `shouldStopRef` 仅控制批量 Worker 从 `queueRef` 中抽取新任务的循环控制；
+  * 单张生成（`handleTagSingle`）直接调用底层生成函数，拥有专属的生命周期，不受批量状态影响；
+  * **状态快照与无损回滚**：单张生成前保存 `previousStatus` 与 `previousCaption`，遇到未配置 Key 或异常中止时自动还原原有结果，保证成功状态（绿勾标）不丢失。
+
+### 3.6 服务商管理与动态头像色彩架构 (Provider CRUD & Dynamic Avatar)
+* **三层服务商模型**：
+  * 官方系统预设（Google Gemini、OpenAI、SiliconFlow）带有 `isSystem: true`，全局保护防误删；
+  * 第三方与自定义服务商支持完整的增、删、改、查；
+* **色彩体系**：
+  * 内置 13 款预设调色板与原生 1677 万色色彩拾取器；
+  * 头像采用 Inline Style 渲染以稳定支持任意 Hex 颜色，并通过色彩亮度公式（`r*0.299 + g*0.587 + b*0.114`）自动计算并适配黑/白高对比度文字。
 
 ---
 

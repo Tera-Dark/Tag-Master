@@ -21,7 +21,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({ projects, onNext }) => {
                 totalImages++;
                 if (img.caption) {
                     totalCaptions++;
-                    avgTags += img.caption.split(',').length;
+                    const tagBlock = img.caption.split(/\n\s*\n/)[0];
+                    avgTags += tagBlock.split(',').filter(t => t.trim().length > 0).length;
                 } else {
                     missingCaptions++;
                 }

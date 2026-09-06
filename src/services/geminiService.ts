@@ -1,4 +1,3 @@
-
 import { AppSettings } from "../types";
 import { processImage } from "./imageProcessor";
 import { smartFetch, sleepWithSignal } from "./networkUtils";
@@ -127,7 +126,7 @@ const generateWithGoogle = async (file: File, settings: AppSettings, signal?: Ab
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000);
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
   const onAbort = () => controller.abort();
   if (signal) {
     signal.addEventListener('abort', onAbort, { once: true });
@@ -168,16 +167,27 @@ const generateWithGoogle = async (file: File, settings: AppSettings, signal?: Ab
     // Check candidates structure
     const candidate = data.candidates?.[0];
     if (!candidate) {
-      throw new Error("API returned no candidates.");
+      if (data.promptFeedback?.blockReason) {
+        throw new Error(`Google 内容审查拦截 (${data.promptFeedback.blockReason}): 图片可能包含违规或敏感内容`);
+      }
+      throw new Error("API 未返回任何候选结果 (No candidates).");
+    }
+
+    if (candidate.finishReason === 'SAFETY') {
+      throw new Error("Google 内容安全拦截 (SAFETY): 模型判定图片可能包含敏感或不适宜内容，拒绝生成");
+    }
+
+    if (candidate.finishReason === 'RECITATION') {
+      throw new Error("Google 引用拦截 (RECITATION): 内容触发版权或重复限制");
     }
 
     if (candidate.finishReason === 'MAX_TOKENS') {
-      throw new Error("Response Truncated (Max Tokens).");
+      throw new Error("响应长度超限 (Max Tokens).");
     }
 
     const text = candidate.content?.parts?.[0]?.text;
     if (!text && text !== "") {
-      throw new Error("API returned an empty response.");
+      throw new Error("API 返回了空文本内容.");
     }
 
     return text || "";
@@ -188,7 +198,7 @@ const generateWithGoogle = async (file: File, settings: AppSettings, signal?: Ab
       throw new DOMException('Aborted by user', 'AbortError');
     }
     if ((error as Error)?.name === 'AbortError') {
-      throw new Error("请求超时 (60s): 无法连接至 Google Gemini API，请检查网络连接或科学上网配置。");
+      throw new Error("请求超时 (45s): 无法连接至 Google Gemini API，请检查网络连接或科学上网配置。");
     }
     throw error;
   }

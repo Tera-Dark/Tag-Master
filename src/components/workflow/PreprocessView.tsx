@@ -70,7 +70,7 @@ export const PreprocessView: React.FC<PreprocessViewProps> = ({ projects, onUpda
     return (
         <div className="flex-1 flex flex-col bg-white dark:bg-[#212121] p-6 overflow-hidden animate-in fade-in duration-300 ease-out">
             {/* Toolbar */}
-            <div className="flex items-center justify-between gap-4 mb-6 shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6 shrink-0">
                 {/* Segmented Pill Selector */}
                 <div className="bg-[#f4f4f4] dark:bg-[#2f2f2f] p-1 rounded-full border border-black/[0.04] dark:border-white/[0.06] flex items-center gap-0.5">
                     {(['all', 'landscape', 'portrait', 'square'] as const).map(type => (

@@ -17,7 +17,7 @@ export const PromptSettingsTab: React.FC<PromptSettingsTabProps> = ({
         <div>
           <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
             <Wand2 className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
-            <span>系统反推提示词预设 (Visual Prompt Compiler v2.0)</span>
+            <span>系统反推提示词预设 (Visual Prompt Compiler v2.1)</span>
           </h3>
           <p className="text-xs text-zinc-400 dark:text-zinc-500">
             针对不同扩散模型（Flux、Illustrious、SDXL、Midjourney）精调的高保真视觉解构提示词

@@ -25,7 +25,7 @@ export const useSearch = (projects: Project[], activeProjectId: string | 'all') 
         return allImages.filter(({ img }) => {
             // 1. Status Filter
             if (viewFilter === 'pending' && img.status === 'success') return false;
-            if (viewFilter === 'completed' && img.status !== 'success') return false;
+            if (viewFilter === 'completed' && img.status !== 'success' && !(img.status === 'loading' && img.caption)) return false;
 
             // 2. Search Query
             if (!searchQuery.trim()) return true;
