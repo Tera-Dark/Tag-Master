@@ -1,4 +1,7 @@
 import { DetectedModel, ModelCapability, AiProtocol } from '../types';
+import { Connection, DEFAULT_URLS, requestJson, resolveEndpoint } from './providers/connection';
+import { object } from './providers/generation';
+import { ProviderError } from './providers/errors';
 
 /**
  * Intelligent capability detector for AI models.
@@ -21,20 +24,20 @@ export const detectModelCapabilities = (
 
   // 1. VISION Capability (Critical for dataset tagging)
   const isVision =
-    /(vision|image|vl\b|vl-|\b4o\b|4o-|gemini|claude-3|qwen2\.5-vl|qwen-vl|minicpm-v|internvl|pixtral|llava|omni|florence|joycaption|deepseek-vl|glm-4v|yi-vl|step-1v|cogvlm)/i.test(
+    /(gpt-5|gpt-4\.1|gpt-4\.5|claude-(?:sonnet|opus|haiku)-[4-9]|o[34](?:-|$)|vision|vl\b|vl-|\b4o\b|4o-|gemini|claude-3|qwen2\.5-vl|qwen-vl|minicpm-v|internvl|pixtral|llava|omni|florence|joycaption|deepseek-vl|glm-4v|yi-vl|step-1v|cogvlm)/i.test(
       id
     ) ||
     /(image|vision|multimodal)/i.test(desc) ||
     meta?.architecture?.modality?.includes('image') ||
     false;
 
-  if (isVision) {
+  if (isVision && !isNonTaggingModel(id)) {
     caps.add('vision');
   }
 
   // 2. REASONING / DEEP THINKING Capability
   const isReasoning =
-    /(\bo1\b|\bo1-|\bo3\b|\bo3-|\br1\b|\br1-|_r1|reasoning|thinking|deepseek-r1|qwq)/i.test(
+    /(gpt-5|gemini-3|\bo1\b|\bo1-|\bo3\b|\bo3-|\br1\b|\br1-|_r1|reasoning|thinking|deepseek-r1|qwq)/i.test(
       id
     ) || /(reasoning|thinking)/i.test(desc);
 
@@ -53,7 +56,7 @@ export const detectModelCapabilities = (
 
   // 4. AUDIO / SPEECH Capability
   const isAudio =
-    /(audio|voice|tts|whisper|realtime|gemini-1\.5|gemini-2\.0|gemini-2\.5|gpt-4o-audio|speech)/i.test(
+    /(audio|voice|tts|whisper|realtime|gemini-1\.5|gemini-2\.0|gemini-2\.5|gemini-3|gpt-4o-audio|speech)/i.test(
       id
     ) || /(audio|speech)/i.test(desc);
 
@@ -63,9 +66,8 @@ export const detectModelCapabilities = (
 
   // 5. TOOLS / FUNCTION CALLING Capability
   const isTools =
-    /(gpt-4|gpt-3\.5|claude|gemini|qwen|deepseek|mistral|llama-3|glm-4|function)/i.test(
-      id
-    ) && !/(embedding|embed|rerank|whisper|tts)/i.test(id);
+    /(gpt-4|gpt-3\.5|claude|gemini|qwen|deepseek|mistral|llama-3|glm-4|function)/i.test(id) &&
+    !/(embedding|embed|rerank|whisper|tts)/i.test(id);
 
   if (isTools) {
     caps.add('tools');
@@ -80,148 +82,137 @@ export const detectModelCapabilities = (
 export const getModelGroup = (modelId: string): string => {
   const id = modelId.toLowerCase();
   if (id.includes('gemini')) return 'gemini';
-  if (id.includes('gpt') || id.includes('o1') || id.includes('o3') || id.includes('dall-e')) return 'openai';
+  if (id.includes('gpt') || id.includes('o1') || id.includes('o3') || id.includes('dall-e'))
+    return 'openai';
   if (id.includes('claude')) return 'anthropic';
   if (id.includes('qwen')) return 'qwen';
   if (id.includes('deepseek')) return 'deepseek';
   if (id.includes('llama')) return 'meta-llama';
   if (id.includes('mistral') || id.includes('mixtral')) return 'mistral';
   if (id.includes('glm') || id.includes('cog')) return 'zhipu-ai';
-  if (id.includes('llava') || id.includes('internvl') || id.includes('florence') || id.includes('joycaption')) return 'open-vision';
+  if (
+    id.includes('llava') ||
+    id.includes('internvl') ||
+    id.includes('florence') ||
+    id.includes('joycaption')
+  )
+    return 'open-vision';
   return 'other';
 };
 
-/**
- * Fetch and detect models for Google Gemini
- */
-export const fetchGoogleModels = async (apiKey: string): Promise<DetectedModel[]> => {
-  if (!apiKey) throw new Error('API Key is required to fetch models');
+/** Exclude generators, embeddings and speech-only endpoints from image-to-text recommendations. */
+export function isNonTaggingModel(id: string): boolean {
+  return /(?:embedding|embed-|rerank|dall-e|gpt-image|imagen|flux|stable-diffusion|image-generation|text-to-image|tts|whisper|transcri|sora|wan[\d.-]|hunyuan-video|cogvideox|realtime|audio-preview|native-audio|gemini.*(?:image|tts))/.test(
+    id.toLowerCase()
+  );
+}
+export function visionStatus(model: DetectedModel): 'supported' | 'unsupported' | 'unknown' {
+  if (model.visionMode === 'enabled') return 'supported';
+  if (model.visionMode === 'disabled' || isNonTaggingModel(model.id)) return 'unsupported';
+  if (model.capabilities.includes('vision')) return 'supported';
+  return model.capabilitySource === 'provider' ? 'unsupported' : 'unknown';
+}
 
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
-  const res = await fetch(apiUrl);
-
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Google API Error (${res.status}): ${errorText}`);
+export function modelFromRemote(raw: unknown, protocol: AiProtocol): DetectedModel | null {
+  const item = object(raw);
+  const rawId = item.id || item.name || item.model;
+  if (typeof rawId !== 'string' || !rawId.trim()) return null;
+  const id = protocol === 'google' ? rawId.replace(/^models\//, '') : rawId;
+  const architecture = object(item.architecture);
+  const input = item.input_modalities || architecture.input_modalities;
+  const output = item.output_modalities || architecture.output_modalities;
+  const modality =
+    typeof architecture.modality === 'string' ? architecture.modality.split('->')[0] : undefined;
+  const inputs = Array.isArray(input) ? input : modality?.split('+');
+  const description = typeof item.description === 'string' ? item.description : '';
+  let caps = detectModelCapabilities(id, { description });
+  if (inputs) {
+    caps = caps.filter((c) => c !== 'vision');
+    if (inputs.includes('image') && (!Array.isArray(output) || output.includes('text')))
+      caps.push('vision');
   }
+  const name = item.displayName || item.display_name || (item.id ? item.name : '') || id;
+  return {
+    id,
+    name: typeof name === 'string' ? name : id,
+    description,
+    capabilities: caps,
+    group: getModelGroup(id),
+    source: 'remote',
+    capabilitySource: inputs ? 'provider' : 'inferred',
+    contextLength:
+      typeof (item.context_length ?? item.inputTokenLimit) === 'number'
+        ? Number(item.context_length ?? item.inputTokenLimit)
+        : undefined,
+  };
+}
 
-  const data = await res.json();
-  if (!data.models || !Array.isArray(data.models)) {
-    throw new Error('Unexpected response format from Google Gemini API');
+/** A list is discovery, not proof of account access or image support. Never removes manually added models. */
+export async function discoverModels(
+  c: Connection,
+  signal?: AbortSignal
+): Promise<DetectedModel[]> {
+  const initial = resolveEndpoint(c, 'models');
+  const results = new Map<string, DetectedModel>();
+  const seen = new Set<string>();
+  let next = initial;
+  for (let page = 0; page < 20; page++) {
+    if (seen.has(next))
+      throw new ProviderError('模型列表分页循环。可手动添加模型，或检查服务的分页响应。');
+    seen.add(next);
+    const raw = await requestJson(c, next, { method: 'GET' }, signal);
+    const data = object(raw);
+    const list = Array.isArray(raw)
+      ? raw
+      : Array.isArray(data.models)
+        ? data.models
+        : Array.isArray(data.data)
+          ? data.data
+          : undefined;
+    if (!list)
+      throw new ProviderError(
+        '模型列表格式不兼容。可填写自定义列表 URL，或直接手动添加模型；不影响模型调用。'
+      );
+    for (const item of list) {
+      const methods = object(item).supportedGenerationMethods;
+      if (c.protocol === 'google' && Array.isArray(methods) && !methods.includes('generateContent'))
+        continue;
+      const model = modelFromRemote(item, c.protocol);
+      if (model) results.set(model.id, model);
+    }
+    if (results.size > 10000)
+      throw new ProviderError('模型列表超过 10,000 项，请使用更精确的模型列表端点或手动添加。');
+    const token = data.nextPageToken;
+    const cursor =
+      data.next_cursor ||
+      (data.has_more ? data.last_id || object(list[list.length - 1]).id : undefined);
+    if (!token && !cursor) return [...results.values()].sort((a, b) => a.id.localeCompare(b.id));
+    const url = new URL(initial);
+    if (token) url.searchParams.set('pageToken', String(token));
+    else url.searchParams.set(c.protocol === 'anthropic' ? 'after_id' : 'after', String(cursor));
+    next = url.toString();
   }
+  throw new ProviderError('模型列表超过 20 页，请缩小列表范围或手动添加模型。');
+}
 
-  return data.models
-    .filter((m: { supportedGenerationMethods?: string[] }) => {
-      // Filter models that support content generation
-      return m.supportedGenerationMethods?.includes('generateContent') ?? true;
-    })
-    .map((m: { name: string; displayName?: string; description?: string; supportedGenerationMethods?: string[] }) => {
-      const id = m.name.replace(/^models\//, '');
-      const capabilities = detectModelCapabilities(id, {
-        description: m.description,
-        supportedGenerationMethods: m.supportedGenerationMethods
-      });
-
-      return {
-        id,
-        name: m.displayName || id,
-        capabilities,
-        description: m.description,
-        group: getModelGroup(id)
-      };
-    })
-    .sort((a: DetectedModel, b: DetectedModel) => a.id.localeCompare(b.id));
-};
-
-/**
- * Fetch and detect models for OpenAI-compatible endpoints (including SiliconFlow, Ollama, OneAPI, OpenRouter, etc.)
- */
-export const fetchOpenAiModels = async (
+// Legacy exports retained for external callers, now sharing transport/auth/timeout logic.
+export const fetchGoogleModels = (apiKey: string) =>
+  discoverModels({ protocol: 'google', baseUrl: DEFAULT_URLS.google, apiKey });
+export const fetchOpenAiModels = (
   baseUrl: string,
   apiKey: string,
-  customHeaders?: { key: string; value: string }[]
-): Promise<DetectedModel[]> => {
-  if (!baseUrl) throw new Error('Base URL is required');
-
-  const rawBaseUrl = baseUrl.trim().replace(/\/+$/, '');
-  let apiUrl = rawBaseUrl;
-
-  if (apiUrl.endsWith('/chat/completions')) {
-    apiUrl = apiUrl.replace('/chat/completions', '/models');
-  } else if (apiUrl.endsWith('/v1')) {
-    apiUrl = `${apiUrl}/models`;
-  } else {
-    apiUrl = `${apiUrl}/v1/models`;
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  };
-
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
-  }
-
-  if (customHeaders) {
-    customHeaders.forEach(h => {
-      if (h.key && h.value) {
-        headers[h.key] = h.value;
-      }
-    });
-  }
-
-  const res = await fetch(apiUrl, { headers });
-  if (!res.ok) {
-    let errMsg = res.statusText;
-    try {
-      const errJson = await res.json();
-      errMsg = errJson.error?.message || JSON.stringify(errJson);
-    } catch {
-      // ignore
-    }
-    throw new Error(`API Error (${res.status}): ${errMsg}`);
-  }
-
-  const data = await res.json();
-  const rawList: Array<{ id: string; name?: string; description?: string }> = Array.isArray(data.data)
-    ? data.data
-    : Array.isArray(data)
-    ? data
-    : [];
-
-  if (rawList.length === 0) {
-    throw new Error('No models found at this endpoint');
-  }
-
-  return rawList
-    .filter(item => Boolean(item.id))
-    .map(item => {
-      const id = item.id;
-      const capabilities = detectModelCapabilities(id, { description: item.description });
-
-      return {
-        id,
-        name: item.name || id,
-        capabilities,
-        description: item.description,
-        group: getModelGroup(id)
-      };
-    })
-    .sort((a, b) => a.id.localeCompare(b.id));
-};
-
-/**
- * Unified model fetcher dispatching to the right protocol
- */
-export const fetchProviderModels = async (
+  customHeaders?: Connection['customHeaders']
+) =>
+  discoverModels({
+    protocol: 'openai_compatible',
+    baseUrl,
+    apiKey,
+    customHeaders,
+    authMode: apiKey ? 'auto' : 'none',
+  });
+export const fetchProviderModels = (
   protocol: AiProtocol,
   baseUrl: string,
   apiKey: string,
-  customHeaders?: { key: string; value: string }[]
-): Promise<DetectedModel[]> => {
-  if (protocol === 'google') {
-    return await fetchGoogleModels(apiKey);
-  } else {
-    return await fetchOpenAiModels(baseUrl, apiKey, customHeaders);
-  }
-};
+  customHeaders?: Connection['customHeaders']
+) => discoverModels({ protocol, baseUrl, apiKey, customHeaders });

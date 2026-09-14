@@ -29,3 +29,16 @@ lint_*.json
 build_*.txt
 tsc_*.txt
 
+
+.env
+.env.*
+!.env.example
+.vite/
+*.tsbuildinfo
+
+# Reproducible browser evidence and local release packages
+artifacts/
+coverage/
+playwright-report/
+test-results/
+*.zip

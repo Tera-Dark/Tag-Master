@@ -8,10 +8,18 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint && npm run lint:ui && npm test && npm run build",
+    "lint:ui": "node scripts/check-ui.mjs",
+    "test:ui": "node scripts/ui-smoke.cjs",
+    "test:api-ui": "node scripts/api-smoke.cjs",
+    "test:qol-ui": "node scripts/qol-smoke.cjs",
+    "check:release": "node scripts/check-release.mjs"
   },
   "dependencies": {
-    "@google/genai": "^1.30.0",
     "file-saver": "^2.0.5",
     "i18next": "^26.3.0",
     "i18next-browser-languagedetector": "^8.2.1",
@@ -30,6 +38,7 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/file-saver": "^2.0.7",
+    "@types/node": "^22.20.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
@@ -38,6 +47,7 @@
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^15.15.0",
     "jsdom": "^28.1.0",
+    "playwright": "^1.63.0",
     "postcss": "^8.5.15",
     "prettier": "^3.2.5",
     "tailwindcss": "^4.3.0",
@@ -50,5 +60,8 @@
     "workbox-routing": "^7.4.0",
     "workbox-strategies": "^7.4.0",
     "workbox-window": "^7.4.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

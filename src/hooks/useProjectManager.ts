@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Project, TagImage } from '../types';
+import { Project, TagImage, BatchCaptionParams } from '../types';
 import { loadProjectsFromDB, syncProjectsIncrementally } from '../services/storageService';
 import { createTagImages } from '../services/fileHelpers';
 
@@ -15,14 +15,20 @@ const revokeUrl = (url: string) => {
 
 export const useProjectManager = () => {
     const [projects, setProjects] = useState<Project[]>([]);
+    const [loadError, setLoadError] = useState(false);
+    const [saveRevision, setSaveRevision] = useState(0);
     const [isLoaded, setIsLoaded] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
     const saveTimeoutRef = useRef<number | undefined>(undefined);
+    const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+    const saveVersionRef = useRef(0);
     const prevProjectsRef = useRef<Project[]>([]);
 
     // Load from DB on mount
     useEffect(() => {
+        let cancelled = false;
         loadProjectsFromDB().then(savedProjects => {
+            if (cancelled) return;
             if (savedProjects?.length) {
                 const loaded = savedProjects.map(p => ({
                     ...p,
@@ -36,43 +42,57 @@ export const useProjectManager = () => {
                 prevProjectsRef.current = loaded;
             }
             setIsLoaded(true);
-        }).catch(() => setIsLoaded(true));
+        }).catch(error => {
+            if (cancelled) return;
+            console.error('Database load failed; automatic saving disabled to protect existing data.', error);
+            setSaveStatus('unsaved');
+            setLoadError(true);
+        });
+        return () => { cancelled = true; };
     }, []);
 
     // Auto-save to DB (Incremental Sync)
     useEffect(() => {
         if (!isLoaded) return;
+        const version = ++saveVersionRef.current;
         setSaveStatus('saving');
         clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = window.setTimeout(async () => {
+        saveTimeoutRef.current = window.setTimeout(() => {
+          saveQueueRef.current = saveQueueRef.current.then(async () => {
             try {
                 const current = projects;
                 const prev = prevProjectsRef.current;
 
                 // 1. Find deleted projects
-                const prevIds = prev.map(p => p.id);
-                const currentIds = current.map(p => p.id);
-                const deletedIds = prevIds.filter(id => !currentIds.includes(id));
-
-                // 2. Find updated/added projects (reference changes or new)
-                const updatedProjects = current.filter(p => {
-                    const prevP = prev.find(old => old.id === p.id);
-                    return !prevP || prevP !== p;
-                });
+                const previousById = new Map(prev.map(p => [p.id, p]));
+                const currentIds = new Set(current.map(p => p.id));
+                const deletedIds = prev.filter(p => !currentIds.has(p.id)).map(p => p.id);
+                const updatedProjects = current.filter(p => previousById.get(p.id) !== p);
 
                 if (updatedProjects.length > 0 || deletedIds.length > 0) {
                     await syncProjectsIncrementally(updatedProjects, deletedIds);
                 }
 
                 prevProjectsRef.current = current;
-                setSaveStatus('saved');
+                if (version === saveVersionRef.current) setSaveStatus('saved');
             } catch (e) {
                 console.error("Incremental save failed:", e);
-                setSaveStatus('unsaved');
+                if (version === saveVersionRef.current) setSaveStatus('unsaved');
             }
+          });
         }, 1000);
         return () => clearTimeout(saveTimeoutRef.current);
-    }, [projects, isLoaded]);
+    }, [projects, isLoaded, saveRevision]);
+
+    useEffect(() => {
+        if (saveStatus === 'saved') return;
+        const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = '';
+        };
+        window.addEventListener('beforeunload', warnBeforeUnload);
+        return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+    }, [saveStatus]);
 
     // --- Actions ---
 
@@ -144,10 +164,8 @@ export const useProjectManager = () => {
                     }
                 });
             });
-            return prev.map(p => ({
-                ...p,
-                images: p.images.filter(img => !imageIds.has(img.id))
-            })).filter(p => p.images.length > 0);
+            return prev.map(p => p.images.some(img => imageIds.has(img.id))
+                ? { ...p, images: p.images.filter(img => !imageIds.has(img.id)) } : p);
         });
     }, []);
 
@@ -185,19 +203,10 @@ export const useProjectManager = () => {
         } : p));
     }, []);
 
-    type BatchUpdateParams = {
-        find?: string;
-        replace?: string;
-        prefix?: string;
-        suffix?: string;
-        tags?: string[];
-        rules?: { pattern: string; replace: string }[];
-    };
-
     const batchUpdateCaptions = useCallback((
         targetIds: Set<string>,
         operation: 'replace' | 'prepend' | 'append' | 'addTags' | 'removeTags' | 'applyRules' | 'lowercase' | 'underscoreToSpace' | 'spaceToUnderscore' | 'sanitize',
-        params: BatchUpdateParams
+        params: BatchCaptionParams
     ) => {
         setProjects(prev => prev.map(p => ({
             ...p,
@@ -212,7 +221,11 @@ export const useProjectManager = () => {
                 else if (operation === 'addTags' && params.tags) {
                     const currentTags = newCaption.split(',').map(t => t.trim()).filter(Boolean);
                     const existingLower = new Set(currentTags.map(t => t.toLowerCase()));
-                    const uniqueToAdd = params.tags.map((t: string) => t.trim()).filter((t: string) => !existingLower.has(t.toLowerCase()));
+                    const uniqueToAdd = params.tags.map(t => t.trim()).filter(t => {
+                        if (!t || existingLower.has(t.toLowerCase())) return false;
+                        existingLower.add(t.toLowerCase());
+                        return true;
+                    });
                     if (uniqueToAdd.length > 0) newCaption = [...currentTags, ...uniqueToAdd].join(', ');
                 }
                 else if (operation === 'removeTags' && params.tags) {
@@ -284,6 +297,7 @@ export const useProjectManager = () => {
                 });
             }
 
+            if (!next.some(p => p.id === destId)) return prev;
             const movingImages: TagImage[] = [];
             // Extract images from all projects
             next = next.map(p => {
@@ -291,8 +305,8 @@ export const useProjectManager = () => {
                 const staying = p.images.filter(img => !sourceImageIds.has(img.id));
                 const moving = p.images.filter(img => sourceImageIds.has(img.id));
                 movingImages.push(...moving);
-                return { ...p, images: staying };
-            }).filter(p => p.images.length > 0 || p.id === destId); // Remove empty source projects
+                return moving.length ? { ...p, images: staying } : p;
+            }); // Preserve empty projects and their metadata.
 
             // Add to destination
             const destIdx = next.findIndex(p => p.id === destId);
@@ -317,6 +331,7 @@ export const useProjectManager = () => {
                 });
             }
 
+            if (sourceProjectId === destId || !next.some(p => p.id === destId)) return prev;
             const sourceIdx = next.findIndex(p => p.id === sourceProjectId);
             if (sourceIdx === -1) return prev;
 
@@ -347,10 +362,8 @@ export const useProjectManager = () => {
                     }
                 });
             });
-            return prev.map(p => ({
-                ...p,
-                images: p.images.filter(i => i.status !== 'success')
-            })).filter(p => p.images.length > 0);
+            return prev.map(p => p.images.some(i => i.status === 'success')
+                ? { ...p, images: p.images.filter(i => i.status !== 'success') } : p);
         });
     }, []);
 
@@ -362,7 +375,9 @@ export const useProjectManager = () => {
         projects,
         setProjects, // Exposed for advanced cases or ref updates
         isLoaded,
+        loadError,
         saveStatus,
+        retrySave: () => setSaveRevision(value => value + 1),
         addFilesToProject,
         createProject,
         renameProject,

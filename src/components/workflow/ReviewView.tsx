@@ -1,153 +1,131 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
+import { AlertCircle, ArrowRight, Check, FileText, Images, Tags } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Project, TagImage } from '../../types';
-import { AlertCircle, CheckCircle2, FileText, ImageIcon, Tags, ArrowRight } from '../Icons';
+import { Thumbnail } from '../Thumbnail';
 
 interface ReviewViewProps {
-    projects: Project[];
-    onNext: () => void;
+  projects: Project[];
+  onNext: () => void;
 }
 
-export const ReviewView: React.FC<ReviewViewProps> = ({ projects, onNext }) => {
-    // --- Statistics ---
-    const stats = useMemo(() => {
-        let totalImages = 0;
-        let totalCaptions = 0;
-        let missingCaptions = 0;
-        let errorCount = 0;
-        let avgTags = 0;
-
-        projects.forEach(p => {
-            p.images.forEach(img => {
-                totalImages++;
-                if (img.caption) {
-                    totalCaptions++;
-                    const tagBlock = img.caption.split(/\n\s*\n/)[0];
-                    avgTags += tagBlock.split(',').filter(t => t.trim().length > 0).length;
-                } else {
-                    missingCaptions++;
-                }
-                if (img.status === 'error') errorCount++;
-            });
-        });
-
-        avgTags = totalCaptions > 0 ? Math.round(avgTags / totalCaptions) : 0;
-
-        return { totalImages, totalCaptions, missingCaptions, errorCount, avgTags };
-    }, [projects]);
-
-    const issues = useMemo(() => {
-        const list: { projectId: string; img: TagImage; issue: string }[] = [];
-        projects.forEach(p => {
-            p.images.forEach(img => {
-                if (!img.caption) {
-                    list.push({ projectId: p.id, img, issue: 'Missing caption' });
-                } else if (img.caption.length < 10) {
-                    list.push({ projectId: p.id, img, issue: 'Caption too short' });
-                }
-                if (img.status === 'error') {
-                    list.push({ projectId: p.id, img, issue: img.errorMsg || 'Processing error' });
-                }
-            });
-        });
-        return list;
-    }, [projects]);
-
-    return (
-        <div className="flex-1 flex flex-col bg-white dark:bg-[#212121] p-6 md:p-10 overflow-y-auto custom-scrollbar animate-in fade-in duration-300 ease-out">
-            <div className="max-w-4xl mx-auto w-full space-y-6">
-
-                {/* Header */}
-                <div className="text-center space-y-1.5">
-                    <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">Project Review</h2>
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">Review your dataset statistics and health before exporting.</p>
-                </div>
-
-                {/* Stats Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="bg-white dark:bg-[#262626] p-4 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-2xs flex flex-col items-center justify-center gap-1.5">
-                        <div className="p-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-full">
-                            <ImageIcon className="w-5 h-5" />
-                        </div>
-                        <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">{stats.totalImages}</div>
-                        <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Total Images</div>
-                    </div>
-
-                    <div className="bg-white dark:bg-[#262626] p-4 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-2xs flex flex-col items-center justify-center gap-1.5">
-                        <div className="p-2.5 bg-zinc-100 dark:bg-zinc-800 text-emerald-600 dark:text-emerald-400 rounded-full">
-                            <CheckCircle2 className="w-5 h-5" />
-                        </div>
-                        <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">{stats.totalCaptions}</div>
-                        <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Captioned</div>
-                    </div>
-
-                    <div className="bg-white dark:bg-[#262626] p-4 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-2xs flex flex-col items-center justify-center gap-1.5">
-                        <div className={`p-2.5 rounded-full ${stats.missingCaptions > 0 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400'}`}>
-                            <AlertCircle className="w-5 h-5" />
-                        </div>
-                        <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">{stats.missingCaptions}</div>
-                        <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Missing Tags</div>
-                    </div>
-
-                    <div className="bg-white dark:bg-[#262626] p-4 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-2xs flex flex-col items-center justify-center gap-1.5">
-                        <div className="p-2.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-full">
-                            <Tags className="w-5 h-5" />
-                        </div>
-                        <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100">{stats.avgTags}</div>
-                        <div className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Avg Tags/Img</div>
-                    </div>
-                </div>
-
-                {/* Issues List */}
-                <div className="bg-white dark:bg-[#262626] rounded-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-2xs overflow-hidden">
-                    <div className="px-4 py-3.5 border-b border-black/[0.04] dark:border-white/[0.06] flex justify-between items-center bg-black/[0.015] dark:bg-white/[0.02]">
-                        <h3 className="font-semibold text-base text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                            <FileText className="w-4 h-4 text-zinc-400" />
-                            Review Items
-                        </h3>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${issues.length > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : 'bg-black/[0.04] text-zinc-600 dark:bg-white/[0.06] dark:text-zinc-300'}`}>
-                            {issues.length} Issues Found
-                        </span>
-                    </div>
-
-                    {issues.length === 0 ? (
-                        <div className="p-10 text-center">
-                            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 mb-3">
-                                <CheckCircle2 className="w-6 h-6" />
-                            </div>
-                            <h4 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-1">All Good!</h4>
-                            <p className="text-sm text-zinc-400">No content issues detected. You are ready to export.</p>
-                        </div>
-                    ) : (
-                        <div className="divide-y divide-black/[0.04] dark:divide-white/[0.05] max-h-[360px] overflow-y-auto custom-scrollbar">
-                            {issues.map((item, idx) => (
-                                <div key={`${item.projectId}-${item.img.id}-${idx}`} className="p-4 flex gap-4 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-                                    <div className="w-14 h-14 bg-[#fbfbfb] dark:bg-[#1a1a1a] rounded-xl overflow-hidden flex-shrink-0 border border-black/[0.04] dark:border-white/[0.06] p-1 flex items-center justify-center">
-                                        <img src={item.img.previewUrl} className="w-full h-full object-contain" loading="lazy" />
-                                    </div>
-                                    <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                        <div className="flex justify-between items-start mb-1">
-                                            <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{item.img.file.name}</span>
-                                            <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-0.5 rounded-full border border-amber-200/50 dark:border-amber-800/50">{item.issue}</span>
-                                        </div>
-                                        <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">{item.img.caption || "No caption"}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex justify-end pt-2">
-                    <button 
-                        onClick={onNext} 
-                        className="px-6 py-2.5 bg-[#0d0d0d] dark:bg-white text-white dark:text-[#0d0d0d] rounded-full font-semibold text-sm shadow-2xs hover:opacity-90 active:scale-95 transition-all flex items-center gap-2"
-                    >
-                        Next: Export <ArrowRight className="w-4 h-4" />
-                    </button>
-                </div>
-
-            </div>
+export function ReviewView({ projects, onNext }: ReviewViewProps) {
+  const { t } = useTranslation();
+  const { total, captioned, missing, average, issues } = useMemo(() => {
+    let total = 0,
+      captioned = 0,
+      tagCount = 0;
+    const issues: { img: TagImage; project: string; message: string; raw?: boolean }[] = [];
+    for (const project of projects)
+      for (const img of project.images) {
+        total++;
+        if (img.caption.trim()) {
+          captioned++;
+          tagCount += img.caption
+            .split(/\n\s*\n/)[0]
+            .split(',')
+            .filter((tag) => tag.trim()).length;
+          if (img.caption.length < 10)
+            issues.push({ img, project: project.name, message: 'uiCaptionShort' });
+        } else issues.push({ img, project: project.name, message: 'uiCaptionMissing' });
+        if (img.status === 'error')
+          issues.push({
+            img,
+            project: project.name,
+            message: img.errorMsg || 'uiProcessingError',
+            raw: !!img.errorMsg,
+          });
+      }
+    return {
+      total,
+      captioned,
+      missing: total - captioned,
+      average: captioned ? Math.round(tagCount / captioned) : 0,
+      issues,
+    };
+  }, [projects]);
+  const metrics = [
+    { icon: Images, label: 'totalImages', value: total },
+    { icon: Check, label: 'uiCaptioned', value: captioned },
+    { icon: AlertCircle, label: 'uiMissingCaptions', value: missing },
+    { icon: Tags, label: 'uiAverageTags', value: average },
+  ];
+  return (
+    <section className='tm-workflow-view flex-1 overflow-y-auto bg-tm-canvas'>
+      <div className='max-w-4xl mx-auto w-full py-4'>
+        <div className='tm-view-heading flex items-start justify-between gap-4'>
+          <div>
+            <span className='text-xs text-tm-subtle block mb-3'>04 / {t('review')}</span>
+            <h2>{t('uiReviewTitle')}</h2>
+            <p>{t('uiReviewDescription')}</p>
+          </div>
+          <button
+            className='tm-button tm-button-primary px-4 py-2.5 mt-6 text-sm flex items-center gap-2 shrink-0'
+            onClick={onNext}
+          >
+            {t('export')}
+            <ArrowRight size={16} />
+          </button>
         </div>
-    );
-};
+        <div className='tm-review-stats grid grid-cols-2 md:grid-cols-4 mb-8'>
+          {metrics.map(({ icon: Icon, label, value }) => (
+            <div key={label} className='flex flex-col gap-2'>
+              <div className='text-tm-subtle'>
+                <Icon size={19} />
+              </div>
+              <div className='text-2xl'>{value}</div>
+              <p className='text-xs text-tm-subtle'>{t(label)}</p>
+            </div>
+          ))}
+        </div>
+        <div className='tm-card overflow-hidden'>
+          <div className='flex justify-between items-center gap-3 px-6 py-4 border-b border-tm-border'>
+            <h3 className='flex items-center gap-2 text-sm font-medium'>
+              <FileText size={16} />
+              {t('uiReviewItems')}
+            </h3>
+            <span className='text-xs text-tm-subtle'>
+              {t('uiIssueCount', { count: issues.length })}
+            </span>
+          </div>
+          {!issues.length ? (
+            <div className='p-12 text-center'>
+              <div className='w-11 h-11 border border-tm-border rounded-full flex items-center justify-center mx-auto mb-4'>
+                {total ? <Check size={20} /> : <Images size={20} />}
+              </div>
+              <h4 className='font-medium mb-2'>{t(total ? 'uiReviewReady' : 'uiNoImages')}</h4>
+              <p className='text-sm text-tm-subtle'>
+                {t(total ? 'uiReviewReadyDescription' : 'uiImportFirst')}
+              </p>
+            </div>
+          ) : (
+            <div className='divide-y divide-tm-border max-h-[480px] overflow-y-auto'>
+              {issues.map(({ img, project, message, raw }, index) => (
+                <div
+                  key={`${img.id}-${index}`}
+                  className='flex items-center gap-4 p-4 sm:px-6 hover:bg-tm-panel'
+                >
+                  <div className='w-12 h-12 bg-tm-media rounded-lg overflow-hidden shrink-0 p-1'>
+                    <Thumbnail
+                      file={img.file}
+                      url={img.previewUrl}
+                      className='w-full h-full object-contain'
+                    />
+                  </div>
+                  <div className='min-w-0 flex-1'>
+                    <p className='text-sm truncate'>{img.file.name}</p>
+                    <p className='text-xs text-tm-subtle mt-1 truncate'>{project}</p>
+                  </div>
+                  <span className='text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1.5 max-w-[50%] break-words'>
+                    <AlertCircle size={13} className='shrink-0 mt-0.5' />
+                    {raw ? message : t(message)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}

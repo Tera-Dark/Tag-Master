@@ -1,4 +1,3 @@
-
 import {
   Upload,
   X,
@@ -53,7 +52,7 @@ import {
   Check,
   Circle,
   CheckCircle2,
-  Code
+  Code,
 } from 'lucide-react';
 
 export {
@@ -110,5 +109,5 @@ export {
   Check,
   Circle,
   CheckCircle2,
-  Code
+  Code,
 };

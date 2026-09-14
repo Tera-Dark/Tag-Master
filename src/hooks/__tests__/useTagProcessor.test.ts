@@ -26,7 +26,7 @@ describe('useTagProcessor', () => {
         protocol: 'google',
         providerName: 'Google',
         apiKey: 'test-api-key',
-        baseUrl: '',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
         model: 'gemini-1.5-flash',
         activePrompt: 'test prompt',
         concurrency: 2,

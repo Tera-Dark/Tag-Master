@@ -1,10 +1,12 @@
 
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { Project, TagImage } from '../types';
 
 export const useSearch = (projects: Project[], activeProjectId: string | 'all') => {
     const [searchQuery, setSearchQuery] = useState('');
     const [viewFilter, setViewFilter] = useState<'all' | 'pending' | 'completed'>('all');
+
+    const deferredQuery = useDeferredValue(searchQuery.trim().toLowerCase());
 
     const filteredImages = useMemo(() => {
         const allImages: { projId: string, img: TagImage }[] = [];
@@ -22,29 +24,23 @@ export const useSearch = (projects: Project[], activeProjectId: string | 'all') 
             }
         }
 
+        const lengthMatch = /^len\s*([<>])\s*(\d+)$/.exec(deferredQuery);
         return allImages.filter(({ img }) => {
             // 1. Status Filter
             if (viewFilter === 'pending' && img.status === 'success') return false;
             if (viewFilter === 'completed' && img.status !== 'success' && !(img.status === 'loading' && img.caption)) return false;
 
             // 2. Search Query
-            if (!searchQuery.trim()) return true;
-
-            const query = searchQuery.toLowerCase();
-
-            // Advanced Search: len > 50
-            if (query.startsWith('len>') || query.startsWith('len <')) {
-                const operator = query.includes('>') ? '>' : '<';
-                const limit = parseInt(query.split(operator)[1]);
-                if (!isNaN(limit)) {
-                    const captionLen = img.caption.length;
-                    return operator === '>' ? captionLen > limit : captionLen < limit;
-                }
+            const query = deferredQuery;
+            if (!query) return true;
+            if (lengthMatch) {
+                const limit = Number(lengthMatch[2]);
+                return lengthMatch[1] === '>' ? img.caption.length > limit : img.caption.length < limit;
             }
 
             // Advanced Search: status:error
             if (query.startsWith('status:')) {
-                const status = query.split(':')[1];
+                const status = query.slice(7).trim();
                 return img.status === status;
             }
 
@@ -54,7 +50,7 @@ export const useSearch = (projects: Project[], activeProjectId: string | 'all') 
                 (img.caption && img.caption.toLowerCase().includes(query))
             );
         });
-    }, [projects, activeProjectId, searchQuery, viewFilter]);
+    }, [projects, activeProjectId, deferredQuery, viewFilter]);
 
     return {
         searchQuery,

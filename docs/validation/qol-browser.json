@@ -1,0 +1,13 @@
+{
+  "steps": [
+    "Import completion feedback",
+    "Modal editor does not navigate background image",
+    "Escape protects unsaved settings",
+    "Continue editing preserves draft",
+    "Explicit discard restores saved prompt",
+    "Unchanged settings close without nagging",
+    "Caption Alt navigation remains available"
+  ],
+  "errors": [],
+  "realApiRequests": 0
+}
