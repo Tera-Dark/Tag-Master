@@ -1,0 +1,60 @@
+// Chromium smoke tour with synthetic local fixtures. No AI API calls.
+const {chromium}=require('playwright');const fs=require('fs');
+const path=require('node:path');
+const root=process.cwd();
+const screenshots=path.join(root,'artifacts/ui-previews');fs.mkdirSync(screenshots,{recursive:true});
+const fixtures=path.join(root,'scripts/fixtures');
+(async()=>{
+ const browser=await chromium.launch({headless:true});
+ const page=await browser.newPage({viewport:{width:1440,height:960},locale:'zh-CN',reducedMotion:'reduce'});
+ const errors=[]; const steps=[];
+ page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>{errors.push('Unexpected native dialog: '+d.message());d.dismiss();});
+ await page.addInitScript(()=>localStorage.setItem('lora-tag-master-tutorial-seen-v1','true'));
+ const shot=async name=>{await page.screenshot({path:path.join(screenshots,`${name}.png`),animations:'disabled'});steps.push(name);};
+ const escape=async()=>{await page.keyboard.press('Escape');};
+ await page.goto(process.env.UI_BASE_URL || 'http://localhost:5173/',{waitUntil:'networkidle'});
+ await shot('workspace-light');
+ await page.getByTitle('使用教程',{exact:true}).click();await shot('tutorial');await escape();
+ await page.getByRole('button',{name:'新建项目',exact:true}).click();
+ await shot('project-create');await page.getByRole('dialog').getByRole('textbox').first().fill('形与色 · 示例素材');await page.getByRole('button',{name:'创建项目',exact:true}).click();
+ await page.locator('input[type=file][accept="image/*"]').setInputFiles(fs.readdirSync(fixtures).map(f=>path.join(fixtures,f)));
+ await page.getByRole('option').first().waitFor();
+ await shot('workspace-images');
+ await page.getByRole('option').first().focus();await page.keyboard.press('Enter');
+ if(await page.getByRole('option').first().getAttribute('aria-selected')!=='true')throw new Error('Keyboard selection failed');
+ await shot('image-inspector');
+ await page.getByRole('option').first().dblclick();await shot('image-lightbox');await escape();
+ await page.getByRole('button',{name:'批量编辑',exact:true}).click();await shot('batch-edit');await escape();
+ await page.getByRole('button',{name:'形与色 · 示例素材',exact:true}).hover(); await page.getByTitle('编辑项目属性').click();await shot('project-edit');await escape();
+ await page.getByRole('button',{name:'形与色 · 示例素材',exact:true}).hover(); await page.getByTitle('删除项目', {exact:true}).click();await shot('project-delete');await escape();
+ await page.getByTitle('全选 / 反选 (Ctrl+A)').click();
+ // Make selection deterministic.
+ if(!await page.getByTitle('移动').count()) {await page.getByRole('option').first().click();}
+ const move=page.locator('.tm-toolbar').getByRole('button',{name:/移动/}).first();
+ if(await move.count()){await move.click();await shot('move-project');await escape();}
+ await page.getByTitle('数据整理与清洗').click();await page.getByRole('button',{name:'清洗',exact:true}).click();await shot('clean-tags');await escape();
+ await page.getByRole('button',{name:'日志',exact:true}).click();await shot('run-logs');await escape();
+ await page.getByRole('button',{name:'导出全部',exact:true}).click();await shot('export-modal');await escape();
+ await page.getByRole('button',{name:'2. 预处理',exact:true}).click();await shot('preprocess');
+ await page.getByRole('button',{name:'裁剪',exact:true}).first().click();await shot('crop-editor');await escape();
+ await page.getByRole('button',{name:'继续打标',exact:true}).click();
+ await page.getByRole('button',{name:'下一个',exact:false}).click();await shot('review');
+ await page.getByRole('button',{name:'导出',exact:true}).click();await shot('export-view');
+ await page.getByRole('radio',{name:/JSON/}).click();
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'下载数据集',exact:true}).click();await(await download).saveAs(path.join(screenshots,'smoke-export.zip'));steps.push('export-download');
+ await page.getByRole('button',{name:'设置',exact:true}).click();await shot('settings-models');
+ await page.getByRole('button',{name:'重命名服务商',exact:true}).click();await shot('provider-edit');await escape();
+ await page.getByRole('button',{name:'添加服务商',exact:true}).first().click();await shot('provider-add');await escape();
+ await page.getByRole('tab',{name:'提示词预设'}).click();await page.getByRole('button',{name:'另存为预设',exact:true}).click();await shot('prompt-name');
+ await page.getByRole('dialog').last().getByRole('textbox').fill('极简测试预设');await page.getByRole('dialog').last().getByRole('button',{name:'确认',exact:true}).click();
+ await page.getByRole('tab',{name:'通用与并发'}).click();await shot('settings-general');
+ await page.getByRole('button',{name:'深色 Dark',exact:true}).click();await shot('settings-dark');await page.getByRole('button',{name:'保存设置',exact:true}).click();
+ await page.getByRole('button',{name:'3. AI 打标',exact:true}).click();await shot('workspace-dark');
+ await page.setViewportSize({width:390,height:844});await shot('mobile-dark');
+ await page.getByRole('button',{name:'展开或收起项目导航',exact:true}).click();await shot('mobile-navigation');
+ await page.getByRole('button',{name:'设置',exact:true}).click();await shot('mobile-settings');await page.getByRole('tab',{name:/模型服务/}).click();await shot('mobile-models');await escape();
+ await page.getByRole('button',{name:'关闭项目导航',exact:true}).click({position:{x:375,y:300}});
+ const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);if(overflow)errors.push('Horizontal page overflow on mobile');
+ console.log(JSON.stringify({steps,errors},null,2));fs.writeFileSync(path.join(screenshots,'browser-check.json'),JSON.stringify({steps,errors},null,2));
+ await browser.close();if(errors.length)process.exitCode=1;
+})();

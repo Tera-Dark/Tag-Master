@@ -1,21 +1,30 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tag Master — AI 数据集打标与管理助手</title>
   <meta name="description" content="专为 AI 图像模型微调与 LoRA 训练量身定制的本地化数据集预处理与智能打标助手" />
-  <meta name="theme-color" content="#09090b" />
+  <meta name="theme-color" content="#ffffff" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/pwa-192x192.svg" />
+  <style>html{background:#fff;color:#202020}html.dark{background:#212121;color:#ececec}</style>
+  <script>
+    try {
+      const saved = JSON.parse(localStorage.getItem('lora-tag-master-settings-v9') || localStorage.getItem('lora-tag-master-settings-v8') || 'null');
+      const dark = saved && saved.theme === 'dark';
+      document.documentElement.classList.toggle('dark', Boolean(dark));
+      document.querySelector('meta[name="theme-color"]').content = dark ? '#212121' : '#ffffff';
+    } catch { /* Unavailable storage must not prevent startup. */ }
+  </script>
 </head>
 
-<body
-  class="bg-zinc-50 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-200 antialiased h-screen overflow-hidden selection:bg-indigo-500/30 selection:text-indigo-600 dark:selection:text-indigo-200">
+<body class="antialiased h-screen overflow-hidden">
   <div id="root" class="h-full"></div>
+  <noscript><p style="padding:32px;font:14px system-ui">请启用 JavaScript 以使用 Tag Master。Enable JavaScript to use Tag Master.</p></noscript>
   <script type="module" src="/src/index.tsx"></script>
 </body>
 

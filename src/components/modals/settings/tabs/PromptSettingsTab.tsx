@@ -1,123 +1,165 @@
 import React from 'react';
-import { Wand2, Sparkles } from 'lucide-react';
-import { AppSettings, DEFAULT_TEMPLATES } from '../../../../types';
+import { Check, Save, RotateCcw, Trash2 } from 'lucide-react';
+import { AppSettings, DEFAULT_TEMPLATES, PromptTemplate } from '../../../../types';
+import { useDialogs } from '../../../ui/DialogContext';
 
 export interface PromptSettingsTabProps {
   localSettings: AppSettings;
   setLocalSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
 }
-
 export const PromptSettingsTab: React.FC<PromptSettingsTabProps> = ({
   localSettings,
-  setLocalSettings
+  setLocalSettings,
 }) => {
+  const { confirm, prompt } = useDialogs();
+  const templates = [...DEFAULT_TEMPLATES, ...(localSettings.customTemplates || [])];
+  const current = templates.find((t) => t.value === localSettings.activePrompt);
+  const select = async (template: PromptTemplate) => {
+    if (
+      !current &&
+      localSettings.activePrompt.trim() &&
+      !(await confirm('切换格式会替换当前未另存的自定义指令。继续？如需保留，请先“另存为预设”。'))
+    )
+      return;
+    setLocalSettings((s) => ({
+      ...s,
+      activePrompt: template.value,
+      captionFormat: template.format || 'custom',
+      promptPresetId: template.id,
+    }));
+  };
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6 bg-white dark:bg-[#18181b]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className='tm-settings-content api-prompts'>
+      <header className='api-section-heading'>
         <div>
-          <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-            <Wand2 className="w-5 h-5 text-zinc-700 dark:text-zinc-300" />
-            <span>系统反推提示词预设 (Visual Prompt Compiler v2.1)</span>
-          </h3>
-          <p className="text-xs text-zinc-400 dark:text-zinc-500">
-            针对不同扩散模型（Flux、Illustrious、SDXL、Midjourney）精调的高保真视觉解构提示词
-          </p>
+          <h2>打标指令</h2>
+          <p>先确定数据集需要的输出格式，再按素材调整描述范围。</p>
         </div>
-        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-black/[0.04] dark:bg-white/[0.06] text-zinc-600 dark:text-zinc-300 border border-black/[0.04] dark:border-white/[0.06]">
-          9-Layer Spatial Hierarchy
-        </span>
+        <span className='api-active-badge'>Dataset presets · v3</span>
+      </header>
+      <div className='api-prompt-choices'>
+        {DEFAULT_TEMPLATES.map((template, i) => (
+          <button
+            type='button'
+            className='tm-button api-prompt-choice'
+            key={template.id}
+            aria-pressed={current?.id === template.id}
+            onClick={() => void select(template)}
+          >
+            <span className='api-prompt-number'>0{i + 1}</span>
+            <strong>
+              {template.label}
+              {i === 0 && <small>默认推荐</small>}
+              {current?.id === template.id && <Check size={16} />}
+            </strong>
+            <p>{template.description}</p>
+          </button>
+        ))}
       </div>
-
-      {/* Template Mode Pills */}
-      <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-        {[...DEFAULT_TEMPLATES, ...(localSettings.customTemplates || [])].map(tm => {
-          const isActive = localSettings.activePrompt === tm.value;
-          return (
-            <button
-              key={tm.id}
-              type="button"
-              onClick={() => setLocalSettings(s => ({ ...s, activePrompt: tm.value }))}
-              className={`whitespace-nowrap px-4 py-2.5 rounded-2xl border text-sm font-medium transition-all flex items-center gap-2.5 shrink-0 ${
-                isActive
-                  ? 'bg-zinc-900 dark:bg-white border-transparent text-white dark:text-zinc-900 font-bold shadow-2xs'
-                  : 'bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.08] dark:border-white/[0.08] text-zinc-600 dark:text-zinc-400 hover:border-black/[0.2]'
-              }`}
-            >
-              {tm.mode && (
-                <span className={`px-2 py-0.5 rounded-lg text-xs font-extrabold ${
-                  isActive
-                    ? 'bg-white/20 dark:bg-black/20 text-white dark:text-zinc-900'
-                    : 'bg-black/[0.05] dark:bg-white/[0.08] text-zinc-700 dark:text-zinc-300'
-                }`}>
-                  {tm.mode}
-                </span>
-              )}
-              <span>{tm.label}</span>
-            </button>
-          );
-        })}
+      <div className='api-prompt-example'>
+        <span className='api-note'>格式示例 · 仅用于展示，不会发送给模型</span>
+        <pre>
+          {current?.example ||
+            (current
+              ? '此自定义预设没有示例。'
+              : '自定义指令：保留模型的原始文本格式，不自动转换为标签。')}
+        </pre>
       </div>
-
-      {/* Mode Guide Banner */}
-      {(() => {
-        const allTms = [...DEFAULT_TEMPLATES, ...(localSettings.customTemplates || [])];
-        const currentTm = allTms.find(tm => tm.value === localSettings.activePrompt);
-        if (currentTm?.description) {
-          return (
-            <div className="p-4 rounded-2xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.08] text-sm text-zinc-700 dark:text-zinc-300 flex items-start gap-2.5">
-              <Sparkles className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
-              <div className="leading-relaxed">
-                <span className="font-bold text-zinc-900 dark:text-zinc-100 mr-1">{currentTm.label}：</span>
-                <span className="text-zinc-600 dark:text-zinc-400">{currentTm.description}</span>
+      {!!localSettings.customTemplates?.length && (
+        <section className='api-custom-presets'>
+          <h3>我的预设</h3>
+          <div className='api-actions'>
+            {localSettings.customTemplates.map((t) => (
+              <div key={t.id} className='api-custom-preset'>
+                <button
+                  type='button'
+                  className='tm-button api-button'
+                  aria-pressed={current?.id === t.id}
+                  onClick={() => void select(t)}
+                >
+                  {t.label}
+                </button>
+                <button
+                  type='button'
+                  className='tm-button api-icon-button'
+                  aria-label={`删除预设 ${t.label}`}
+                  onClick={async () => {
+                    if (await confirm(`删除预设“${t.label}”？当前指令正文不会被删除。`))
+                      setLocalSettings((s) => ({
+                        ...s,
+                        customTemplates: s.customTemplates.filter((item) => item.id !== t.id),
+                      }));
+                  }}
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
-            </div>
-          );
-        }
-        return null;
-      })()}
-
-      {/* Prompt Textarea Editor */}
-      <div className="relative space-y-2">
-        <div className="flex justify-between items-center text-xs text-zinc-400">
-          <span>系统提示词正文 (System Instruction)</span>
-          <div className="flex items-center gap-2">
+            ))}
+          </div>
+        </section>
+      )}
+      <section className='api-prompt-editor'>
+        <div className='api-section-heading'>
+          <label htmlFor='caption-prompt'>
+            <h3>指令正文</h3>
+            <p>{current ? `当前：${current.label}` : '当前：自定义（未匹配已保存预设）'}</p>
+          </label>
+          <div className='api-actions'>
             <button
-              type="button"
-              onClick={() => {
-                const name = window.prompt('请输入自定义预设名称：', '自定义提示词');
+              type='button'
+              className='tm-button api-button'
+              onClick={async () => {
+                const name = await prompt('自定义预设名称', '我的打标指令');
                 if (name?.trim()) {
-                  const newTemplate = {
-                    id: `custom-${Date.now()}`,
-                    label: name.trim(),
-                    value: localSettings.activePrompt
-                  };
-                  setLocalSettings(s => ({
+                  const id = crypto.randomUUID();
+                  setLocalSettings((s) => ({
                     ...s,
-                    customTemplates: [...(s.customTemplates || []), newTemplate]
+                    promptPresetId: id,
+                    customTemplates: [
+                      ...s.customTemplates,
+                      {
+                        id,
+                        label: name.trim(),
+                        value: s.activePrompt,
+                        format: s.captionFormat || 'custom',
+                      },
+                    ],
                   }));
                 }
               }}
-              className="px-3 py-1 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.1] text-zinc-700 dark:text-zinc-300 font-semibold transition-colors"
             >
+              <Save size={14} />
               另存为预设
             </button>
             <button
-              type="button"
-              onClick={() => setLocalSettings(s => ({ ...s, activePrompt: DEFAULT_TEMPLATES[0].value }))}
-              className="px-3 py-1 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.1] text-zinc-700 dark:text-zinc-300 font-semibold transition-colors"
+              type='button'
+              className='tm-button api-button'
+              onClick={() => void select(DEFAULT_TEMPLATES[0])}
             >
-              恢复推荐 (Mode D)
+              <RotateCcw size={14} />
+              恢复默认
             </button>
           </div>
         </div>
-
         <textarea
+          id='caption-prompt'
+          className='tm-input api-mono'
+          rows={13}
+          spellCheck={false}
           value={localSettings.activePrompt}
-          onChange={e => setLocalSettings(s => ({ ...s, activePrompt: e.target.value }))}
-          className="w-full h-80 p-4 rounded-2xl border border-black/[0.08] dark:border-white/[0.1] bg-[#fafafa] dark:bg-[#1a1a1e] text-sm font-mono leading-relaxed focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white outline-none transition-all resize-y"
-          placeholder="输入用于图像反推打标的系统提示词..."
+          onChange={(e) =>
+            setLocalSettings((s) => ({
+              ...s,
+              activePrompt: e.target.value,
+              captionFormat: 'custom',
+              promptPresetId: undefined,
+            }))
+          }
         />
-      </div>
+        <p className='api-note'>
+          只描述可见内容，不猜测隐藏属性，不强凑标签，不加入生成参数。项目触发词由打标流程统一添加，无需写进指令。现有自定义预设不会因内置预设更新而被覆盖。
+        </p>
+      </section>
     </div>
   );
 };

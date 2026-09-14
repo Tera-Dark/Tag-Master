@@ -1,6 +1,8 @@
+import { removeLiteralTerms } from '../utils/interaction';
+import { taggingProblem } from '../services/providers/connection';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Project, AppSettings, TagImage } from '../types';
-import { generateCaption, RateLimitError } from '../services/geminiService';
+import { generateCaption, RateLimitError, ProviderError } from '../services/geminiService';
 import { sleepWithSignal } from '../services/networkUtils';
 import { appLogger } from '../services/loggerService';
 
@@ -73,13 +75,7 @@ export const useTagProcessor = (
 
     const filterCaption = (text: string, blocked: string[]) => {
         if (!blocked || blocked.length === 0) return text;
-        let filtered = text;
-        blocked.forEach(word => {
-            if (!word.trim()) return;
-            // Case insensitive replacement
-            const regex = new RegExp(`\\b${word}\\b`, 'gi');
-            filtered = filtered.replace(regex, '');
-        });
+        const filtered = removeLiteralTerms(text, blocked);
         // Clean up double commas and excess horizontal spaces without collapsing newlines
         return filtered
             .replace(/,[^\S\r\n]*,/g, ',')
@@ -145,6 +141,7 @@ export const useTagProcessor = (
                 const err = error as Error;
                 const errMsg = err.message || String(error);
                 const isFatal =
+                    (err instanceof ProviderError && !err.retryable) ||
                     errMsg.includes('401') ||
                     errMsg.includes('unauthorized') ||
                     errMsg.includes('403') ||
@@ -209,10 +206,9 @@ export const useTagProcessor = (
         }
 
         // Apply Trigger Word
-        if (currentProject.triggerWord) {
+        if (currentProject.triggerWord?.trim()) {
             const trigger = currentProject.triggerWord.trim();
-            const regex = new RegExp(`\\b${trigger}\\b`, 'gi');
-            caption = caption.replace(regex, '').replace(/,\s*,/g, ',').trim();
+            caption = removeLiteralTerms(caption, [trigger]).replace(/,\s*,/g, ',').trim();
             caption = `${trigger}, ${caption}`;
         }
 
@@ -233,9 +229,10 @@ export const useTagProcessor = (
         if (!currentProject || !img) return false;
 
         const currentSettings = settingsRef.current;
-        if (!currentSettings.apiKey) {
-            appLogger.error('打标失败: 请先在「服务商设置」中填写并配置 API Key');
-            onShowToast?.('请先在「服务商设置」中填写并配置 API Key', 'error');
+        const configurationError = taggingProblem(currentSettings);
+        if (configurationError) {
+            appLogger.error(`打标失败: ${configurationError}`);
+            onShowToast?.(configurationError, 'error');
             return false;
         }
 
@@ -277,7 +274,7 @@ export const useTagProcessor = (
         onStartSettingsError: () => void,
         selectedIds?: Set<string>
     ) => {
-        if (!settings.apiKey) {
+        if (taggingProblem(settings)) {
             onStartSettingsError();
             return;
         }

@@ -1,0 +1,37 @@
+{
+  "steps": [
+    "Fresh Gemini 3.8 default",
+    "Browsing provider does not activate",
+    "Google custom endpoint/header/image request",
+    "Test does not save draft",
+    "Paginated model discovery uses configured origin",
+    "Unknown vision requires explicit confirmation",
+    "Theme change retains draft key",
+    "Theme change retains draft selected model",
+    "Atomic save projects active provider",
+    "Reload preserves model and credentials",
+    "Native Responses image call",
+    "Inactive provider test cannot switch tagging model",
+    "Native Anthropic image call",
+    "Local no-auth works without API key",
+    "Explicit activation selects local model",
+    "Test is cancellable",
+    "Invalid expert JSON is rejected before network",
+    "Invalid JSON cannot be silently saved",
+    "Caption preset selected",
+    "Custom prompt saved verbatim",
+    "No-auth active projection survives save",
+    "Custom legacy-looking prompt survives reload",
+    "Mobile no horizontal overflow",
+    "Cancel discards unsaved prompt change"
+  ],
+  "errors": [],
+  "mockRequests": 7,
+  "protocols": [
+    "Gemini",
+    "Chat Completions",
+    "Responses",
+    "Messages"
+  ],
+  "realApiRequests": 0
+}

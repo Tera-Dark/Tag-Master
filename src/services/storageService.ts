@@ -14,16 +14,24 @@ interface LoraDB extends DBSchema {
 const DB_NAME = 'lora-tag-master-db';
 const DB_VERSION = 1;
 
-let dbPromise: Promise<IDBPDatabase<LoraDB>>;
+let dbPromise: Promise<IDBPDatabase<LoraDB>> | undefined;
 
 const getDB = () => {
   if (!dbPromise) {
     dbPromise = openDB<LoraDB>(DB_NAME, DB_VERSION, {
+      blocking() {
+        void dbPromise?.then(db => db.close());
+        dbPromise = undefined;
+      },
+      terminated() { dbPromise = undefined; },
       upgrade(db) {
         if (!db.objectStoreNames.contains('projects')) {
           db.createObjectStore('projects', { keyPath: 'id' });
         }
       },
+    }).catch(error => {
+      dbPromise = undefined;
+      throw error;
     });
   }
   return dbPromise;

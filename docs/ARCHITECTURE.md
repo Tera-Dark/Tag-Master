@@ -23,7 +23,7 @@ src/
 │   ├── useSearch.ts            # 多维度模糊搜索与状态筛选
 │   └── useTagProcessor.ts      # 批量打标并发调度器、速率限制冷却、单张/批量隔离
 ├── services/            # 纯逻辑无状态服务层
-│   ├── geminiService.ts        # Google / OpenAI 双协议 Payload 构造与 429 解析
+│   ├── geminiService.ts        # 兼容入口；providers/ 统一四协议请求、响应与错误处理
 │   ├── modelDetector.ts        # 端点模型自动探测与 6 维多模态能力推断
 │   ├── loggerService.ts        # 内存运行日志追踪与实时诊断服务
 │   ├── imageProcessor.ts       # OffscreenCanvas 非阻塞图像智能尺寸压缩
@@ -41,7 +41,7 @@ src/
 graph TD
     User([用户操作]) --> SmartToolbar[SmartToolbar / Sidebar]
     SmartToolbar --> useTagProcessor[useTagProcessor 并发调度]
-    useTagProcessor --> geminiService[geminiService 双协议分流]
+    useTagProcessor --> geminiService[geminiService 统一协议入口]
     geminiService --> networkUtils[networkUtils 智能网络层]
     networkUtils --> AI_API[Google / OpenAI 兼容 API]
     useTagProcessor --> useProjectManager[useProjectManager 状态更新]
@@ -104,3 +104,7 @@ graph TD
 2. **Hook 内部函数声明顺序**：在 `useCallback` 依赖中引用的函数必须在物理位置上先声明，避免 Vite 生产构建时因 TS2448 导致编译失败。
 3. **网格列数保护**：列数由 `useSettings` 中的 `clampColumns` 限制在 3~8 列，严禁在 `window.onresize` 中重置用户的个性化列数。
 4. **模型预设对齐**：Google 官方 Gemini API 模型代码严格为 `gemini-2.0-flash`、`gemini-2.0-flash-lite`、`gemini-1.5-flash`、`gemini-1.5-pro`，严禁随意虚构不存在的模型号。
+
+## 当前维护入口
+
+API 适配与设置迁移详见 [API_CONFIGURATION.md](API_CONFIGURATION.md)。工作区快捷键边界及字面量标签处理在 `src/utils/interaction.ts`；生成物位于 Git 忽略的 `artifacts/`。提交前流程见 [CONTRIBUTING.md](../CONTRIBUTING.md)。

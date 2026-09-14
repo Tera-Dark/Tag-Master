@@ -24,15 +24,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          # Removed cache: 'npm' because package-lock.json might not exist in the repo
-          # cache: 'npm'
+          node-version: "22"
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build project
-        run: npm run build
+        run: npm run check
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
