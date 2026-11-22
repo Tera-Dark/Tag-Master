@@ -253,7 +253,7 @@ export function createSampleProjects(): Project[] {
     {
       id: 'sample-ceramic',
       name: 'ceramic_still_life.jpg',
-      previewUrl: '/src/assets/images/sample_ceramic_studio_1795343458020.jpg',
+      previewUrl: `${import.meta.env.BASE_URL}src/assets/images/sample_ceramic_studio_1795343458020.jpg`,
       mimeType: 'image/jpeg',
       width: 1200,
       height: 900,
@@ -268,7 +268,7 @@ export function createSampleProjects(): Project[] {
     {
       id: 'sample-cafe',
       name: 'kissa_lab_storefront.jpg',
-      previewUrl: '/src/assets/images/sample_cafe_typography_1795343457012.jpg',
+      previewUrl: `${import.meta.env.BASE_URL}src/assets/images/sample_cafe_typography_1795343457012.jpg`,
       mimeType: 'image/jpeg',
       width: 1200,
       height: 900,
@@ -282,7 +282,7 @@ export function createSampleProjects(): Project[] {
     {
       id: 'sample-portrait',
       name: 'gallery_window_portrait.jpg',
-      previewUrl: '/src/assets/images/sample_editorial_portrait_1795343457599.jpg',
+      previewUrl: `${import.meta.env.BASE_URL}src/assets/images/sample_editorial_portrait_1795343457599.jpg`,
       mimeType: 'image/jpeg',
       width: 900,
       height: 1200,
@@ -296,7 +296,7 @@ export function createSampleProjects(): Project[] {
     {
       id: 'sample-camera',
       name: 'rangefinder_limestone.jpg',
-      previewUrl: '/src/assets/images/sample_industrial_camera_1795343456483.jpg',
+      previewUrl: `${import.meta.env.BASE_URL}src/assets/images/sample_industrial_camera_1795343456483.jpg`,
       mimeType: 'image/jpeg',
       width: 1024,
       height: 1024,

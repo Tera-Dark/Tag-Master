@@ -26,6 +26,12 @@ bun run dev            # tsx server.ts，默认 http://localhost:3000
 
 > 只用外部网关（中转站）时可以不填 `GEMINI_API_KEY`，在「设置 → 服务商」里添加自定义 OpenAI 兼容服务即可。
 
+## 部署到 GitHub Pages
+
+推送到 `main` 会触发 `.github/workflows/deploy.yml`：Bun 装依赖 → `tsc --noEmit` → `vite build`（`PUBLIC_BASE=/<repo>/`）→ `actions/deploy-pages`。
+
+产物是纯静态站点（https://tera-dark.github.io/Tag-Master/），**不带 `server.ts` 的 `/api` 代理**：页面里「内置 Studio Gemini」探测会失败，需要在「设置 → 服务商」添加一个支持浏览器直连（CORS）的 OpenAI 兼容服务商；本地 `bun run dev` 才走自带的 Gemini 代理。
+
 ## 技术栈
 
 React 19 · Vite 8 · Tailwind CSS 4 · Express 4 · `@google/genai` · JSZip · lucide-react · Motion

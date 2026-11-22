@@ -6,6 +6,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // GitHub Pages 项目站点部署在 /<repo>/ 子路径下，CI 通过 PUBLIC_BASE 注入
+    base: process.env.PUBLIC_BASE || '/',
     plugins: [
       react(),
       tailwindcss(),
