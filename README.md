@@ -1,76 +1,46 @@
 # Tag Master
 
-极简的图片数据集整理与 AI 打标工作台。基于 React 19、TypeScript、Vite 和 Tailwind CSS，串联 **导入 → 预处理 → 打标 → 审查 → 导出**。
+现代 AI 图像提示词打标工作室：把一批图片批量跑成可直接用于训练/出图的 caption，并逐条质检。
+面向 **Krea 2 · MOSS-Image · Flux DiT · Anima · LoRA 数据集 · Danbooru 标签** 多套语法，而不是一套通用提示词。
 
-## 主要功能
+## 它能干什么
 
-- **项目与素材**：多项目管理、拖放图片 / 文件夹、虚拟化画廊、选择与筛选、裁剪和批量处理。
-- **AI 打标**：Gemini、OpenAI Chat Completions、OpenAI Responses、Anthropic Messages；支持兼容网关与本地免密接口。
-- **清晰的配置流程**：选择服务商、填写连接、导入或手动添加模型、测试图片调用、指定打标模型、保存。浏览和测试不会切换当前打标模型。
-- **标注格式**：纯标签（默认）、自然语言、标签＋描述；支持自定义指令与预设，保留用户编辑过的旧指令。
-- **审查与导出**：标签编辑、批量清洗、项目触发词、TXT / JSON 和 ZIP 数据集导出。
-- **交互保护**：导入反馈与失败恢复、设置草稿关闭确认、输入区域快捷键隔离、保存状态反馈、浅色 / 深色与移动端布局。
+- **多模型语法蓝图**：内置 `krea2`（自然散文）、`moss_prose`（长上下文空间叙事）、`moss_layout`（分镜/排版）、`flux_dit`、`anima`、`lora_hybrid`、`danbooru_tags` 七套规范，每套带有自己的结构公式与反模式清单（例如 Krea 2 禁用 `masterpiece` / `8k`，MOSS 禁用 `score_9`）。
+- **五段式流水线**：工作区（导入分项目）→ 预处理（宽高比分桶、裁切）→ 提示词实验台（编译、改写、对照）→ 复核（逐条确认/打回）→ 导出（TXT / JSON，打包 ZIP）。
+- **AI 服务商可插拔**：内置 Studio Gemini（走 `/api` 代理，AI Studio 环境下免密），也可接入 OpenAI 兼容 / OneAPI / NewAPI / vLLM / OpenRouter 等外部网关，密钥只留在本机浏览器。
+- **本地优先**：项目与条目存在浏览器 IndexedDB，不上传图库。
+- **中英双语界面 + 明暗主题**。
 
-默认打标模型为 `gemini-3.8-flash`。官方模板另提供 `gpt-5.6-terra`、`gpt-5.4-mini`、`claude-sonnet-5`（目录更新于 2026-09-14）。预设不代表账号权限；实际可用型号以服务商文档及测试结果为准。
+## 快速开始
 
-## 本地运行
-
-需要 **Node.js 22 或更新版本**。推荐使用 Node.js 22 LTS，与 CI 保持一致。
+需要 Node.js 20+（推荐用仓库自带的 Bun 锁文件）。
 
 ```bash
-npm ci
-npm run dev
+bun install            # 或 npm install
+cp .env.example .env   # 填入 GEMINI_API_KEY（dotenv 默认只读 .env）
+bun run dev            # tsx server.ts，默认 http://localhost:3000
 ```
 
-浏览器打开终端显示的地址，默认 `http://localhost:5173`。Windows 可双击 `start.bat`：检查 Node 版本、在缺少依赖时运行 `npm ci`，再启动开发服务。已有依赖时，更新代码后仍建议手动执行 `npm ci`。
+生产构建：`bun run build`（Vite 产物在 `dist/`），`bun run start` 起 Express 服务。
+类型检查：`bun run lint`（`tsc --noEmit`）。
 
-```bash
-npm run build       # 生产构建
-npm run preview     # 本地检查构建结果，不是生产 API 代理
+> 只用外部网关（中转站）时可以不填 `GEMINI_API_KEY`，在「设置 → 服务商」里添加自定义 OpenAI 兼容服务即可。
+
+## 技术栈
+
+React 19 · Vite 8 · Tailwind CSS 4 · Express 4 · `@google/genai` · JSZip · lucide-react · Motion
+
+## 目录
+
+```
+server.ts              Express 入口 + Gemini 反推接口（/api）
+src/App.tsx            应用状态与流水线编排
+src/components/        Sidebar / Workspace / Preprocess / PromptLab / Review / Export / Settings
+src/data/modelSpecs.ts 各模型语法蓝图
+src/services/          promptApi（调用与超时/重试）、providerEngine（服务商与协议适配）
+src/utils/             提示词构建、lint、图像处理、IndexedDB 存储
 ```
 
-## API 与隐私
+## 说明
 
-在「设置 → 模型服务」配置 API，**不要把密钥写入 `VITE_*` 环境变量、源码或 Git 仓库**。
-
-- 项目保存在浏览器 IndexedDB；设置保存在 localStorage。Base64 不是加密保险库。
-- AI 打标会将处理后的图片发往你配置的服务商。图片诊断只发送内置色块，但仍可能计费。
-- 浏览器直连受 CORS、混合内容和本地网络策略限制。Ollama / LM Studio 模板使用 OpenAI 兼容 `/v1`，`localhost` 指浏览器所在电脑。
-- 可通过 `.env.example` 中的 `TAG_MASTER_PROXY_ORIGINS` 显式启用本地开发代理，只允许指定的可信 HTTPS 来源。不要公开暴露开发服务器；生产构建不提供此代理。
-- 清理浏览器数据会删除本地项目和配置。保存状态异常时，优先导出备份，不要直接清空数据。
-
-详细配置、参数兼容范围和迁移规则见 [API 配置说明](docs/API_CONFIGURATION.md)。安全边界见 [SECURITY.md](SECURITY.md)。
-
-## 验证与开发
-
-```bash
-npm run check           # 类型检查、Lint、UI 规范、单元测试、生产构建
-npm run check:release   # 待提交文件卫生检查；不暂存、不提交、不推送
-
-# 另开一个终端启动 npm run dev -- --port 5173
-npx playwright install chromium
-npm run test:ui         # 全工作流浏览器回归
-npm run test:api-ui     # 模拟 API 设置回归，不使用真实密钥
-npm run test:qol-ui     # 导入、草稿保护与快捷键回归
-```
-
-浏览器截图和下载样本写入 `artifacts/`，已被 Git 忽略；小型验证结果位于 `docs/validation/`。测试流程、目录约定和 GitHub 提交步骤见 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## 文档
-
-- [当前发布准备报告](docs/RELEASE_READINESS.md)
-- [变更记录](CHANGELOG.md)
-- [架构说明](docs/ARCHITECTURE.md)
-- [API 配置与迁移](docs/API_CONFIGURATION.md)
-- [上一轮极简 UI 记录](docs/UI_REDESIGN.md)
-- [早期综合优化记录](docs/OPTIMIZATION_REPORT.md)
-
-## 已知边界
-
-- 自动化 API 回归使用模拟响应，不能替代真实服务商权限、网络、费用和标注质量验证。
-- 浏览器图片解码支持因格式和平台而异；图片被导入不等于一定能正常预览或打标。
-- 移动端可以管理与编辑；现有裁剪拖拽仍以鼠标操作为主。
-- 没有承诺全浏览器兼容、无限大数据集性能或无条件的数据恢复能力。重要素材请保留原件并定期导出。
-- 公开发布前，请由仓库所有者决定许可证。当前仓库未新增 LICENSE，不擅自指定上游代码的授权方式。
-
-上游：[Tera-Dark/Tag-Master](https://github.com/Tera-Dark/Tag-Master)。本轮变更已整理为工作区本地提交，尚未推送或部署；原仓库的线上版本不代表本轮改动。
+仓库前身是同一工具的旧版实现，历史提交保留在 git 里；当前 `main` 指向这一版重写。

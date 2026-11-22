@@ -1,31 +1,29 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tag Master — AI 数据集打标与管理助手</title>
-  <meta name="description" content="专为 AI 图像模型微调与 LoRA 训练量身定制的本地化数据集预处理与智能打标助手" />
-  <meta name="theme-color" content="#ffffff" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="apple-touch-icon" href="/pwa-192x192.svg" />
-  <style>html{background:#fff;color:#202020}html.dark{background:#212121;color:#ececec}</style>
-  <script>
-    try {
-      const saved = JSON.parse(localStorage.getItem('lora-tag-master-settings-v9') || localStorage.getItem('lora-tag-master-settings-v8') || 'null');
-      const dark = saved && saved.theme === 'dark';
-      document.documentElement.classList.toggle('dark', Boolean(dark));
-      document.querySelector('meta[name="theme-color"]').content = dark ? '#212121' : '#ffffff';
-    } catch { /* Unavailable storage must not prevent startup. */ }
-  </script>
-</head>
-
-<body class="antialiased h-screen overflow-hidden">
-  <div id="root" class="h-full"></div>
-  <noscript><p style="padding:32px;font:14px system-ui">请启用 JavaScript 以使用 Tag Master。Enable JavaScript to use Tag Master.</p></noscript>
-  <script type="module" src="/src/index.tsx"></script>
-</body>
-
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tag Master</title>
+    <meta
+      name="description"
+      content="Next-generation AI visual prompt compiler and dataset studio tailored for Krea 2, MOSS-Image, Flux DiT, and LoRA workflows."
+    />
+    <meta property="og:title" content="Tag Master" />
+    <meta
+      property="og:description"
+      content="Next-generation AI visual prompt compiler and dataset studio tailored for Krea 2, MOSS-Image, Flux DiT, and LoRA workflows."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

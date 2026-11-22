@@ -1,5 +1,6 @@
 {
   "name": "Tag Master",
-  "description": "A minimal local workspace for image datasets, AI captioning, review, and export. Supports Gemini, OpenAI Chat Completions, Responses, and Anthropic Messages.",
-  "requestFramePermissions": []
+  "description": "Next-generation AI visual prompt compiler and dataset studio tailored for Krea 2, MOSS-Image, Flux DiT, and LoRA workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

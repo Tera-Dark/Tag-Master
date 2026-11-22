@@ -1,44 +1,8 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# Test & build temporary artifacts
-lint_*.txt
-lint_*.json
-build_*.txt
-tsc_*.txt
-
-
-.env
-.env.*
-!.env.example
-.vite/
-*.tsbuildinfo
-
-# Reproducible browser evidence and local release packages
-artifacts/
+node_modules/
+build/
+dist/
 coverage/
-playwright-report/
-test-results/
-*.zip
+.DS_Store
+*.log
+.env*
+!.env.example
